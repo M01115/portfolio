@@ -1,0 +1,2872 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dog-Deer World</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    /* Sky-blue default (averaged across the 4 seasons' sky colors), NOT the old
+       near-black #161410 — that ink tone was visible for a beat before the JS
+       below determines SEASON and sets #load-veil's real color (it needs the
+       CDN-imported THREE module to resolve first), producing a black-to-blue
+       flash on first paint. Starting the whole page at a sky tone instead means
+       there's nothing to flash FROM — the eventual season-exact color change is
+       just a blue-to-blue refinement. */
+    body { overflow: hidden; background: #AECCE4; }
+
+    #canvas-container { position: fixed; inset: 0; }
+
+    /* Screen-space fog vignette hugging the viewport edge — all four sides,
+       including the bottom, which distance fog (scene.fog) can never reach
+       because the ground there is closer to the camera than the deer.
+       Background gradient is set from JS using the season's `veil` tint. */
+    /* Starts invisible and fades in alongside #load-veil's reveal (same 1.7s
+       duration, triggered in the same JS block) rather than snapping to full
+       strength the instant the veil uncovers it. */
+    #edge-fog { position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity 1.7s ease; }
+
+    #hint {
+      position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%);
+      font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      font-size: 11px; font-weight: 300; letter-spacing: .15em; text-transform: uppercase;
+      color: rgba(240,235,225,0.38); pointer-events: none;
+      transition: opacity .6s;
+    }
+
+    #e-prompt {
+      position: fixed; display: none;
+      font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      font-size: 11px; font-weight: 300; letter-spacing: .14em; text-transform: uppercase;
+      color: rgba(240,235,225,0.88);
+      background: rgba(22,20,16,0.52);
+      padding: 5px 11px 4px; border-radius: 2px;
+      pointer-events: none;
+      transform: translate(-50%, -200%);
+      transition: opacity .25s;
+    }
+
+    #obj-label {
+      position: fixed; display: none;
+      font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      font-size: 10px; font-weight: 300; letter-spacing: .08em;
+      color: rgba(240,235,225,0.45);
+      pointer-events: none;
+      transform: translate(-50%, -80%);
+    }
+
+    #interact-text {
+      position: fixed; display: none;
+      font-family: Georgia, 'Times New Roman', serif;
+      font-size: 13px; font-weight: 400; font-style: italic;
+      color: rgba(240,235,225,0.92);
+      text-align: center; max-width: 260px;
+      line-height: 1.65;
+      pointer-events: none;
+      transform: translate(-50%, -100%);
+      transition: opacity .4s;
+    }
+
+    /* Idle "says something" text — mirrors #e-prompt's look exactly (same
+       small tracked-caps pill), not a jarring white speech-bubble. */
+    #deer-speech {
+      position: fixed; display: none;
+      font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      font-size: 11px; font-weight: 300; letter-spacing: .14em; text-transform: uppercase;
+      color: rgba(240,235,225,0.88);
+      background: rgba(22,20,16,0.52);
+      padding: 5px 11px 4px; border-radius: 2px;
+      pointer-events: none;
+      transform: translate(-50%, -140%);
+      transition: opacity .25s;
+    }
+
+    #sandbox-palette {
+      position: fixed; bottom: 20px; right: 20px;
+      display: none; flex-direction: column; align-items: center; gap: 6px;
+      background: rgba(22,20,16,0.72); backdrop-filter: blur(4px);
+      padding: 12px 10px; border-radius: 3px;
+      border: 1px solid rgba(240,235,225,0.08);
+    }
+    #sandbox-palette .pal-label {
+      font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      font-size: 9px; letter-spacing: .14em; text-transform: uppercase;
+      color: rgba(240,235,225,0.4); margin-bottom: 2px;
+    }
+    .tile-btn {
+      width: 34px; height: 34px; border-radius: 2px;
+      border: 1.5px solid rgba(240,235,225,0.15); cursor: pointer;
+      transition: border-color .15s, transform .1s;
+      flex-shrink: 0;
+    }
+    .tile-btn:hover { border-color: rgba(240,235,225,0.6); transform: scale(1.08); }
+    .tile-btn.active { border-color: #F0EBE1; }
+    .tile-btn span { display: none; }
+    #sandbox-esc {
+      font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      font-size: 9px; letter-spacing: .1em; text-transform: uppercase;
+      color: rgba(240,235,225,0.3); cursor: pointer; margin-top: 2px;
+      transition: color .15s;
+    }
+    #sandbox-esc:hover { color: rgba(240,235,225,0.65); }
+
+    #mode-badge {
+      position: fixed; top: 18px; right: 20px;
+      font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      font-size: 10px; letter-spacing: .15em; text-transform: uppercase;
+      color: rgba(240,235,225,0.28); pointer-events: none;
+    }
+
+    #season-badge {
+      position: fixed; top: 18px; left: 20px;
+      font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      font-size: 10px; letter-spacing: .18em; text-transform: uppercase;
+      color: rgba(240,235,225,0.30); pointer-events: none;
+    }
+
+    /* Load-in veil — fades from the sky colour to reveal the scene. Default
+       background-color matches body's sky-blue fallback (same reasoning: be
+       blue before the JS below picks the real season, not transparent/black). */
+    #load-veil {
+      position: fixed; inset: 0; z-index: 50; pointer-events: none;
+      background-color: #AECCE4;
+      opacity: 1; transition: opacity 1.7s ease;
+    }
+
+    /* ── SEASONAL ATMOSPHERE VIGNETTE ──────────────────────────────────────
+       Replaces an earlier drifting-particle version (Morris: read as jarring).
+       Now the SAME radial-vignette technique as #edge-fog — a per-season-tinted
+       ring that frames the viewport edges, nothing moving — reused here because
+       #edge-fog itself is deliberately hidden in the embed hero (see the
+       'vignette off in the portfolio hero' note below), so this is what carries
+       that atmospheric framing into the embed. Background is set via JS (same
+       gradient formula + SEASON.veil colour edge-fog uses) right where
+       edge-fog's own gradient is computed, so the two never drift apart.
+       Below #load-veil (z-index 50) so it's hidden during boot and fades in
+       with the reveal. */
+    #season-filter { position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity 1.7s ease; }
+  </style>
+</head>
+<body>
+
+<div id="canvas-container"></div>
+<div id="edge-fog"></div>
+<div id="season-filter"></div>
+<div id="hint">click to guide &middot; wanders on its own</div>
+<div id="e-prompt">[ e ] interact</div>
+<div id="obj-label"></div>
+<div id="interact-text"></div>
+<div id="deer-speech"></div>
+<div id="sandbox-palette">
+  <div class="pal-label">Build</div>
+</div>
+<div id="mode-badge"></div>
+<div id="season-badge"></div>
+<div id="load-veil"></div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+// Used to collapse each tree's separate trunk/canopy meshes into ONE merged
+// local-space geometry per variant (see the "Instanced trees" section below) —
+// the whole point is fewer, bigger meshes instead of thousands of tiny ones.
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+
+// ── Palette ──────────────────────────────────────────────────────────────────
+const C = {
+  terra:       0xA04038,
+  rose:        0xD07885,
+  parchment:   0xF0EBE1,
+  ink:         0x161410,
+  amber:       0xC88828,
+  amberDark:   0xA06818,
+  brown:       0x5C3A1E,
+  brownDark:   0x3E2510,
+  soil:        0x6E5638,   // earthy base under interactable objects (was red terra)
+  stone:       0x8A8070,
+  stoneLight:  0xB8B0A0,
+  wood:        0x8B5E3C,
+  gold:        0xD4AF37,
+  goldDark:    0xA8841F,
+  greyHouse:   0x8A8A8E,
+  greyHouseLt: 0xACACB0,
+  meadow:      0x5A8038,
+  mint:        0x7A9887,
+};
+
+// ── Seasons ──────────────────────────────────────────────────────────────────
+// One is picked at random every page load and drives every color in the scene.
+// Winter freezes the pond solid (opaque ice the deer walks on) and strips the
+// deciduous trees bare. SEASON must be chosen FIRST — terrain and tree colors
+// bake at build time from it.
+const SEASONS = {
+  spring: {
+    name: 'Spring',
+    sky: 0xC2DAEC,
+    sun: 0xFFF4DC, sunI: 1.15, hemiSky: 0xEFEAD8, hemiGround: 0x4A6A2C, hemiI: 0.55,
+    water: { shallow: 0x8FC6C0, deep: 0x3E6E78, shore: 0xCBD9C6 },
+    // Ambient surface motion (see updateWaterWake). Spring: fresh, moderate.
+    waterMotion: { amp: 0.050, speed: 1.00, scale: 0.55, shimmer: 0.060 },
+    // Wind (see WIND_* globals + updateTreeWind/updateBushWind). Modeled on real
+    // Concord MA / Walden Pond climate: spring is the most changeable season
+    // (equinoctial winds) — still mostly out of the NW but the gustiest of the
+    // four. travelBearing is the direction the air MOVES (0=N,90=E,180=S,270=W),
+    // i.e. 180° rotated from the "wind FROM" bearing meteorologists report.
+    wind: { travelBearing: 125, speed: 0.62, gust: 0.55 },
+    veil: 0xCFE3D2,   // viewport edge-fog tint: soft green-white morning mist
+    floor: [0x6DA03C, 0x7DAE4A, 0x5F9433, 0x86B454],
+    pine: [0x2E4A1F, 0x355A22],
+    broadleaf: [0x7FB63E, 0x8FC24E, 0x9ACB5A, 0xE6A9C0],
+    blossom: true, snow: false, bare: false, ice: false,
+  },
+  summer: {
+    name: 'Summer',
+    sky: 0x8FC0EA,
+    sun: 0xFFF2D8, sunI: 1.25, hemiSky: 0xEFEAD8, hemiGround: 0x2E4A1F, hemiI: 0.55,
+    water: { shallow: 0x86C6C4, deep: 0x2E7A86, shore: 0xCBD9C6 },
+    // Summer: glassy, slow, calm — smallest amplitude, slowest drift.
+    waterMotion: { amp: 0.035, speed: 0.70, scale: 0.42, shimmer: 0.045 },
+    // Real New England summers run out of the SW (Bermuda-high influence) and
+    // are the calmest season of the year — lowest speed/gust of the four.
+    wind: { travelBearing: 45, speed: 0.30, gust: 0.20 },
+    veil: 0xEAE2C4,   // viewport edge-fog tint: warm golden summer haze
+    floor: [0x4E7A2E, 0x5E8A38, 0x447026, 0x568030],
+    pine: [0x2E4A1F, 0x274018],
+    broadleaf: [0x4E8A2E, 0x5E9A38, 0x69A542],
+    blossom: false, snow: false, bare: false, ice: false,
+  },
+  autumn: {
+    name: 'Autumn',
+    sky: 0x9FC4E0,
+    sun: 0xFFE6C0, sunI: 1.10, hemiSky: 0xF0E4D0, hemiGround: 0x6E5A30, hemiI: 0.55,
+    water: { shallow: 0x7FA6AE, deep: 0x36606E, shore: 0xC6B79A },
+    // Autumn: breezier — larger, faster, choppier, more shimmer (wind on water).
+    waterMotion: { amp: 0.060, speed: 1.25, scale: 0.62, shimmer: 0.075 },
+    // Wind swings back from summer's SW toward winter's NW as fronts return —
+    // picking back up in strength and turbulence.
+    wind: { travelBearing: 135, speed: 0.55, gust: 0.50 },
+    veil: 0xD8C6A2,   // viewport edge-fog tint: amber autumn mist
+    floor: [0x7A6A38, 0x8A7A40, 0x6E7A38, 0x907C3E],
+    pine: [0x2E4A1F, 0x355A22],
+    broadleaf: [0xC44A22, 0xD97A28, 0xE0B030, 0xB03A2A],
+    blossom: false, snow: false, bare: false, ice: false,
+  },
+  winter: {
+    name: 'Winter',
+    sky: 0xC8D0D8,
+    sun: 0xEAEAF0, sunI: 0.85, hemiSky: 0xE6ECF0, hemiGround: 0xB8BEC2, hemiI: 0.6,
+    water: { shallow: 0x8FA2A8, deep: 0x35484E, shore: 0xD8DEE2 },
+    // Winter: pond is frozen solid — no WATER motion (updateWaterWake returns
+    // early on ice), but the WIND itself does not stop: January is the
+    // windiest month on record for this region, and bare branches actually
+    // read "whippier" per unit of wind than leafy ones (less mass/damping).
+    // So trees + bushes keep swaying at the highest speed of the four seasons.
+    waterMotion: { amp: 0.0, speed: 0.0, scale: 0.5, shimmer: 0.0 },
+    wind: { travelBearing: 135, speed: 0.70, gust: 0.35 },
+    veil: 0xC9D6E2,   // viewport edge-fog tint: icy blue winter air
+    floor: [0xDDE2E4, 0xE6EAEC, 0xD2D8DA, 0xEAEEF0],
+    pine: [0x2E4A1F, 0x3A5A2A],
+    broadleaf: [0x5C4A38],
+    blossom: false, snow: true, bare: true, ice: true,
+  },
+};
+const SEASON_KEYS = ['spring', 'summer', 'autumn', 'winter'];
+// Random per load, but overridable via ?season=spring|summer|autumn|winter for
+// deterministic verification of season-specific behaviour.
+const _seasonParam = new URLSearchParams(location.search).get('season');
+const SEASON = SEASONS[SEASON_KEYS.includes(_seasonParam) ? _seasonParam
+              : SEASON_KEYS[Math.floor(Math.random() * SEASON_KEYS.length)]];
+document.getElementById('season-badge').textContent = SEASON.name;
+document.title = 'Dog-Deer World — ' + SEASON.name;
+{
+  const veil = document.getElementById('load-veil');
+  const edgeFog = document.getElementById('edge-fog');
+  const seasonFilter = document.getElementById('season-filter');
+  veil.style.backgroundColor = '#' + new THREE.Color(SEASON.sky).getHexString();
+  // Fade the veil out AND the edge-fog vignette in together, on the next
+  // frame so both transitions run — the vignette used to snap to full
+  // strength the instant the veil uncovered it (no transition of its own);
+  // now it ramps in alongside the reveal instead of arriving pre-formed.
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    veil.style.opacity = '0';
+    edgeFog.style.opacity = '1';
+    seasonFilter.style.opacity = '1';
+  }));
+
+  // Viewport edge fog: a radial vignette in the season's veil tint, wrapping
+  // ALL four frame edges (unlike scene.fog, which can't reach the bottom).
+  // Deliberately a thin ring — transparent through ~62% of the frame, only
+  // building in the outer ~quarter, strongest in the corners.
+  // Size is left to the CSS default (farthest-corner, no explicit W/H) so the
+  // ellipse's own aspect ratio always matches the viewport's — a hardcoded
+  // "ellipse 120% 115%" was nearly circular, which on a wide 16:9 box meant
+  // the alpha ramp never reached the actual edges (even the corner normalized
+  // to ~0.60, under the 62% stop) — vignette was effectively invisible on
+  // some sides depending on window aspect ratio. farthest-corner makes each
+  // edge midpoint land at exactly 100% on its own axis, so all four sides
+  // ramp in evenly regardless of viewport shape.
+  // Bit-shift the raw hex — do NOT round-trip through THREE.Color here: with
+  // renderer color management on, THREE.Color converts hex to LINEAR space, so
+  // .r/.g/.b come back darker than the sRGB values the CSS gradient needs
+  // (0xD8C6A2 was rendering as rgb(175,144,92) instead of rgb(216,198,162)).
+  const v = SEASON.veil;
+  const rgb = ((v >> 16) & 255) + ',' + ((v >> 8) & 255) + ',' + (v & 255);
+  const vignette = 'radial-gradient(ellipse at 50% 50%, rgba(' + rgb + ',0) 62%, rgba(' + rgb + ',0.38) 84%, rgba(' + rgb + ',0.8) 100%)';
+  edgeFog.style.background = vignette;
+  // Same vignette, on #season-filter — carries the atmospheric framing into
+  // the embed hero, where #edge-fog itself is turned off (see the embed
+  // bridge below). Static (no animation): the "atmosphere" is the seasonal
+  // tint framing the frame edges, not moving elements.
+  seasonFilter.style.background = vignette;
+}
+
+// ── Wind ─────────────────────────────────────────────────────────────────────
+// World convention: bearing 0°=North=-Z, 90°=East=+X (compass, clockwise from
+// north) — matches a top-down map reading. travelBearing is the direction the
+// AIR MOVES (not the meteorological "wind from" bearing), so it's already the
+// vector trees/water should lean/travel along.
+const _windRad = THREE.MathUtils.degToRad(SEASON.wind.travelBearing);
+const WIND_DIR_X = Math.sin(_windRad), WIND_DIR_Z = -Math.cos(_windRad);
+const WIND_SPEED = SEASON.wind.speed;
+const WIND_GUST = SEASON.wind.gust;
+
+// ── Wind swell ────────────────────────────────────────────────────────────
+// Wind pushes a slow traveling swell across the lake, which is what makes a
+// real waterline advance and retreat. Modeled the same way the tree-sway
+// traveling wave already works in this file: a sine whose PHASE depends on
+// position dotted with wind direction (so the swell rolls downwind rather
+// than the whole surface pumping in lockstep), with tempo/amplitude scaled by
+// the season's actual wind speed/gustiness (calmer seasons swell slower and
+// smaller). Consumed only by updateWaterWake — the ground never uses this;
+// beaches don't pulse, water moves over them.
+// Wavelength of the swell across the world (2π/K ≈ 28 units — roughly a
+// lake-width, so a crest visibly sweeps through rather than the whole surface
+// pumping in unison).
+const SWELL_TRAVEL_K = 0.22;
+// Returns the swell's Y offset (WORLD UNITS) of the water surface at a point,
+// given that point's distance along the wind direction. This is the core of
+// the whole effect and mirrors the reference technique: a real oscillating
+// water LEVEL. Everything else — where the edge sits, where foam appears, how
+// far up the beach the water reaches — falls out of comparing this moving
+// surface against the static lakebed, exactly like a real lake. Phase depends
+// on position·windDirection (same traveling-wave shape as the tree sway), so
+// the swell rolls downwind across the body instead of the sheet bobbing as
+// one rigid plane.
+// Amplitudes are deliberately SMALL in world units (the surface only heaves a
+// little — a lake doesn't visibly pump up and down). The waterline still
+// travels because the lakebed here is gently sloped: measured slopes around
+// this shore run ~0.13 (gentle) to ~0.79 (steep bank), i.e. a 1.3x-8x
+// horizontal amplification of any vertical change, ~3.9x median — so even a
+// modest swell reaches visibly up the shallow beaches while barely moving
+// against the steep banks, same as a real lake.
+// Trimmed twice now (was 0.07/0.13, then 0.03/0.055) — Morris said the first
+// cut still read too dramatic. Summer peak amplitude is now a quiet,
+// barely-there heave.
+// Third change here (2026-07-16): spring/autumn were STILL noticeably more
+// dramatic than summer, because amplitude scaled off raw WIND_SPEED
+// (spring 0.62 / autumn 0.55 vs. summer's 0.30 — more than double), so every
+// cut to the shared coefficients preserved that same wide spread between
+// seasons even as the absolute numbers shrank. Fix: anchor amplitude at
+// summer's own wind speed (the season Morris confirmed is calm enough) and
+// only scale the DELTA above that reference, with a much gentler coefficient
+// — so summer is the baseline "scale," and other seasons vary around it by a
+// controlled, smaller amount rather than the full raw wind-speed spread.
+// Winter (0.70, highest of all) never reaches this code — ice returns early
+// in updateWaterWake — so it doesn't need capping here.
+const SWELL_WIND_REF = 0.30;    // summer's WIND_SPEED — the amplitude scale/anchor
+const SWELL_AMP_BASE = 0.022;   // amplitude AT the reference (≈ previous summer amplitude)
+const SWELL_AMP_WIND = 0.008;   // added per unit of wind speed ABOVE the reference only
+function swellAt(windPhase, gustEnv) {
+  const tempo = 0.5 + WIND_SPEED * 1.3;
+  const amp = SWELL_AMP_BASE + Math.max(0, WIND_SPEED - SWELL_WIND_REF) * SWELL_AMP_WIND + WIND_GUST * 0.014;
+  return Math.sin(t * tempo - windPhase * SWELL_TRAVEL_K) * amp * (0.55 + 0.45 * gustEnv);
+}
+// The water's live surface height at ANY (x,z) — not just a mesh vertex —
+// combining the swell with the same two-crossed-sine ambient chop the mesh
+// itself uses (WATER_KA_X etc., hoisted from buildWaterMesh). This is what
+// lets something other than the water mesh (namely the deer, see
+// SWIM_DEPTH_MIN/MAX below) genuinely read "how high is the water right
+// here right now" instead of approximating it with a static formula.
+function waterSurfaceHeightAt(x, z, gustEnv) {
+  const swell = swellAt(x * WIND_DIR_X + z * WIND_DIR_Z, gustEnv);
+  const wm = SEASON.waterMotion;
+  const hA = Math.sin(x * WATER_KA_X + z * WATER_KA_Z + t * wm.speed);
+  const hB = Math.sin(x * WATER_KB_X + z * WATER_KB_Z + t * wm.speed * 0.8);
+  return WATER_LEVEL + swell + (hA + hB) * (wm.amp * 0.5);
+}
+// Vertical depth over which the edge fades dry→wet. Sized to be a bit COARSER
+// than one mesh quad's worth of bed height (~0.48 units of ground × the local
+// slope): any finer and the fade would resolve inside a single quad and the
+// waterline would read as a polygonal stair-step rather than a line. Because
+// it's a DEPTH, it also self-adjusts to the terrain — the same constant gives
+// a soft wide lapping edge on a gentle beach and a crisp one against a steep
+// bank, which is exactly the real-world behavior.
+const EDGE_SOFT = 0.12;
+// Depth over which the shallow shore tint + foam band ride, measured from the
+// live waterline inward. Because these are anchored to DEPTH (not a baked
+// position), they automatically travel with the edge as it moves.
+const FOAM_DEPTH = 0.22;
+const SHORE_TINT_DEPTH = 0.42;
+
+// (Wake/contact layering constants live further down, next to updateWaterWake
+// — they depend on DEER_R, which is declared with the collision system below.
+// This file evaluates top-to-bottom at module load, so anything referencing it
+// must come after it; see the TDZ notes in handoff.md.)
+
+function snowify(hex, amt = 0.65) {
+  return new THREE.Color(hex).lerp(new THREE.Color(0xE8EEF0), amt).getHex();
+}
+
+// ── Scene ────────────────────────────────────────────────────────────────────
+let W = window.innerWidth, H = window.innerHeight;
+const container = document.getElementById('canvas-container');
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(SEASON.sky);
+// Mild distance haze only — its one remaining job is hiding the world rim /
+// far treeline so the forest feels boundless (camera-to-far-frame-edge is
+// ~52-54 units; CAM_OFFSET (0,27,20.5) puts the deer at ~34). The VISIBLE
+// "fog around the viewport" is NOT this — it's the #edge-fog screen-space
+// vignette (see the load-veil block above), which wraps all four frame edges
+// with a per-season tint; scene.fog was tried as the sole mechanism first but
+// distance fog physically can't reach the bottom frame edge (that ground is
+// closer to the camera than the deer) and covered too much of the frame.
+scene.fog = new THREE.Fog(SEASON.sky, 40, 58);
+
+const camera = new THREE.PerspectiveCamera(44, W / H, 0.1, 120);
+
+// preserveDrawingBuffer is opt-in via ?capture=1 — it lets the canvas be read
+// back for screenshots/toDataURL (the WebGL buffer otherwise clears after each
+// composite, which stalls headless preview capture). Off by default so the
+// real easter-egg pays no perf cost; only dev/verification passes enable it.
+const CAPTURE = new URLSearchParams(location.search).has('capture');
+// EMBED = running as the portfolio hero iframe (?embed=1), vs the standalone
+// full-screen easter-egg page. Referenced mrmrs.cc's own hero renderer to size
+// these: it renders at 1× device-pixels (NOT the display's 1.5×) with a
+// high-performance GPU hint. In the embed the world is a small background band
+// behind the bio text, so it can afford mrmrs's lean settings; the standalone
+// page stays full-fidelity since it's the whole screen and the focus.
+const EMBED = new URLSearchParams(location.search).has('embed');
+// Idle deer turning to face the cursor — turned off for now (Morris's call,
+// 2026-07-14). Flip to true to bring it back; see the idle-turn block further
+// down (search MOUSE_LOOK_ENABLED).
+const MOUSE_LOOK_ENABLED = false;
+// powerPreference:'high-performance' matches mrmrs.cc — hints the browser to
+// pick the discrete/high-perf GPU rather than the integrated one, which alone
+// can make the difference between a smooth and a stuttering scroll on laptops.
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: CAPTURE, powerPreference: 'high-performance' });
+renderer.setSize(W, H);
+// Embed: cap at 1× device-pixels (mrmrs does exactly this) — on a 1.5×-DPI
+// display that's 2.25× fewer pixels shaded per frame than our old 1.5× cap, the
+// single biggest fill-rate win and the main thing freeing up GPU/main-thread
+// headroom so the page scroll stops stuttering while the world is on screen.
+renderer.setPixelRatio(EMBED ? 1 : Math.min(window.devicePixelRatio, 1.5));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.08;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+container.appendChild(renderer.domElement);
+
+scene.add(new THREE.HemisphereLight(SEASON.hemiSky, SEASON.hemiGround, SEASON.hemiI));
+
+const sun = new THREE.DirectionalLight(SEASON.sun, SEASON.sunI);
+sun.position.set(9, 17, 10);
+sun.castShadow = true;
+// 1024 (was 1536): ~55% fewer shadow-map texels to rasterize every frame,
+// no visible difference for a soft outdoor scene at this camera distance —
+// the real per-frame cost here is draw-call count (see the tree-shadow note
+// on mesh()/registerTree below), not shadow resolution, so this is a safe
+// GPU-side trim rather than the fix for that. Embed drops to 512 (the world
+// is a small background band there, shadow detail is imperceptible at that
+// size) for another fill-rate saving toward smoother scroll.
+{ const _sm = EMBED ? 512 : 1024; sun.shadow.mapSize.set(_sm, _sm); }
+sun.shadow.camera.left   = -40;
+sun.shadow.camera.right  =  40;
+sun.shadow.camera.top    =  40;
+sun.shadow.camera.bottom = -40;
+sun.shadow.camera.near   = 1;
+sun.shadow.camera.far    = 90;
+sun.shadow.bias = -0.0015;
+scene.add(sun);
+
+const fill = new THREE.DirectionalLight(0xd4e8d4, 0.16);
+fill.position.set(-6, 7, -6);
+scene.add(fill);
+
+// ── Material helpers ─────────────────────────────────────────────────────────
+// Cached by color+flatShading — every solid-color mesh in this file (trees,
+// project objects, deer, sandbox tiles) comes from a handful of fixed palette
+// values reused thousands of times over. Without caching, every single mesh()
+// call minted its own MeshLambertMaterial instance, so ~1000+ scattered trees
+// alone produced thousands of materials collapsing to maybe 30-40 real colors
+// — pure GC/memory waste, and it defeats Three.js's opaque-render-order
+// material sorting (which batches consecutive draws that share a material).
+const _matCache = new Map();
+function mat(color, flat = true) {
+  const key = color + '_' + (flat ? 1 : 0);
+  let m = _matCache.get(key);
+  if (!m) { m = new THREE.MeshLambertMaterial({ color, flatShading: flat }); _matCache.set(key, m); }
+  return m;
+}
+// PERF NOTE (2026-07-16, this file only — see dogdeer-world.html for the
+// non-instanced original): trees no longer go through mesh()/this castShadow
+// default at all — they're built via THREE.InstancedMesh in the "Instanced
+// trees" section below (search TREE_VARIANTS), which sets castShadow once per
+// InstancedMesh (one draw call for the whole species+variant batch in the
+// shadow pass), not per tree. mesh()'s per-call castShadow=true default still
+// applies to everything else that uses it (bushes' individual clumps still
+// opt out explicitly, project objects, deer, rocks, sandbox tiles) — none of
+// those are anywhere near tree-count territory, so it's a non-issue for them.
+function mesh(geo, color, parent, flat = true) {
+  const m = new THREE.Mesh(geo, mat(color, flat));
+  m.castShadow = true;
+  m.receiveShadow = true;
+  if (parent) parent.add(m);
+  return m;
+}
+
+// ── Terrain: Walden Pond ─────────────────────────────────────────────────────
+// World extent. Kept only a little beyond the lake+objects (which reach ~±31),
+// so there isn't a big empty ring of forest past them — the rim trees + fog
+// still hide the edge. Lake and object positions are unchanged. This governs
+// WALKABLE/gameplay extent (BOUND, lake placement, etc.) — kept as-is;
+// GROUND_HALF below is a separate, purely-visual constant for how far the
+// terrain+tree mesh itself extends, which needed to grow independently (see
+// GROUND_HALF's own comment).
+const WORLD = 40;
+// How far the fully-detailed ground plane (and, matching it, tree scatter)
+// extends from the origin — separate from WORLD because the camera can see
+// much farther than the walkable area. Measured directly (2026-07-16, via
+// raycasting the camera's actual 4 screen corners at its most extreme
+// allowed follow position — the naive per-axis "reach" formula the camera
+// clamp uses undercounts because it doesn't account for the frustum widening
+// at the FAR edge of the frame): worst-case visible corner is at radius ~60
+// on a 16:9 screen, ~62 at 21:9. GROUND_HALF=80 covers both with real margin
+// and leaves the pre-existing 100-unit skirt (below) as a second safety net
+// for anything past that (e.g. an extreme 32:9 monitor). Below GROUND_HALF,
+// terrain is full-height + tree-covered; the skirt beyond it is a flattened,
+// lower-resolution, tree-free "just don't show void" layer, which is fine —
+// it's far enough out that a real user essentially never sees it clearly.
+const GROUND_HALF = 80;
+const LAKE_CX = 2, LAKE_CZ = 1;
+// Bigger, fully-connected Walden pond (no detached puddles). Overlapping lobes
+// form the elongated basin + the northward Thoreau's Cove finger.
+const LAKE_BLOBS = [
+  [-10, 1,   8.8],
+  [-17, 2,   5.4],
+  [ 0,  1,   10.6],
+  [ 10, 1.5, 9.8],
+  [ 19, 2,   8.6],   // sole east lobe now — a separate small [26,2,5.6] lobe
+                      // (later shrunk to [24,2,4.2]) used to sit past this
+                      // one's shoreline: its own tight radius carved a second,
+                      // much steeper ledge on top of this lobe's already-gentle
+                      // slope, and its edge (x≈31.6, later 28.2) crept close to
+                      // or past BOUND (30) — trapping the deer in water or
+                      // making the shore too cliff-like to climb. This lobe
+                      // alone reaches dry land by x≈28.3-28.8 across z=-6..6
+                      // with a max grade of ~0.5-0.65/unit, well inside BOUND.
+  [-10, -4.6, 3.4],   // Thoreau's Cove neck
+  [-9,  -8.6, 2.6],   // Thoreau's Cove finger (points north)
+];
+
+// Interactable registry. Real titles + descriptions pulled from the portfolio
+// site (index.html PROJECTS). The crown floats on the water; the rest ring the
+// shore, all on clear land. Order is load-bearing (indexes drive knolls,
+// reactions, colliders). collideR is the deer's hitbox radius for each object.
+const OBJ_DEFS = [
+  { pos: [-11.0, -14.0], onWater: false, make: makeTombstone, reaction: 'bow',
+    label: 'Bury Your Loved Ones',
+    text: 'Only seeds and soil carried across oceans; rammed earth chunks become graves, to bury is to build.' },
+  { pos: [ -2.0,  1.0], onWater: true,  make: makeCrown, reaction: 'tilt',
+    label: 'The Unfinished Swan',
+    text: 'A pavilion of useless machines; each one interfaces the game world with the human body.' },
+  { pos: [ 11.0, 16.0], onWater: false, make: makeAirplane, reaction: 'sniff',
+    label: 'Epstein Flight Logs',
+    text: 'Spatiotemporal data reveals a hidden network among elites; color-coded strings and digital maps trace the connective tissue of crime.' },
+  { pos: [-26.0, 3.0], onWater: false, make: makeBud, reaction: 'nuzzle',
+    label: 'Between Roots',
+    text: 'A building embedded in terrain; children learn everything the soil has to offer before reaching above.' },
+  { pos: [ 1.0, -14.0], onWater: false, make: makeChair, reaction: 'sit',
+    label: 'Sticks and Stones',
+    text: 'A grid calibrated to a rock; an accidental perch becomes an intentional resting place.' },
+  { pos: [ 28.0, -12.0], onWater: false, make: makeGreyHouse, reaction: 'paw',
+    label: 'Cities; Impractical',
+    text: 'Impractical artworks chip away at unfamiliarity; until the space belongs to the inhabitants.' },
+];
+const OBJS = OBJ_DEFS.map(d => ({ pos: d.pos, onWater: d.onWater }));
+const OBJ_SCALE = 2.2; // objects read bigger than the surrounding trees
+
+function smoothstep(edge0, edge1, x) {
+  const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)));
+  return t * t * (3 - 2 * t);
+}
+
+// ── Gradient noise ───────────────────────────────────────────────────────────
+function hash2(x, z) {
+  const n = Math.sin(x * 127.1 + z * 311.7) * 43758.5453123;
+  return n - Math.floor(n);
+}
+const GRAD2 = [
+  [1, 0], [-1, 0], [0, 1], [0, -1],
+  [0.7071, 0.7071], [-0.7071, 0.7071], [0.7071, -0.7071], [-0.7071, -0.7071],
+];
+function perlin2(x, z) {
+  const xi = Math.floor(x), zi = Math.floor(z);
+  const xf = x - xi, zf = z - zi;
+  const g = (ix, iz, dx, dz) => {
+    const v = GRAD2[(hash2(ix, iz) * 8) | 0];
+    return v[0] * dx + v[1] * dz;
+  };
+  const u = xf * xf * xf * (xf * (xf * 6 - 15) + 10);
+  const v = zf * zf * zf * (zf * (zf * 6 - 15) + 10);
+  const n00 = g(xi, zi, xf, zf),         n10 = g(xi + 1, zi, xf - 1, zf);
+  const n01 = g(xi, zi + 1, xf, zf - 1), n11 = g(xi + 1, zi + 1, xf - 1, zf - 1);
+  const nx0 = n00 + (n10 - n00) * u;
+  const nx1 = n01 + (n11 - n01) * u;
+  return (nx0 + (nx1 - nx0) * v) * 1.42;
+}
+const OCT_COS = Math.cos(0.6), OCT_SIN = Math.sin(0.6);
+function fbm(x, z) {
+  let fx = x * 0.045, fz = z * 0.045;
+  let sum = 0, amp = 1, norm = 0;
+  for (let i = 0; i < 4; i++) {
+    sum += perlin2(fx + i * 13.7, fz - i * 7.9) * amp;
+    norm += amp;
+    const rx = fx * OCT_COS - fz * OCT_SIN, rz = fx * OCT_SIN + fz * OCT_COS;
+    fx = rx * 2.35; fz = rz * 2.35;
+    amp *= 0.5;
+  }
+  return (sum / norm) * 1.9;
+}
+function warp(x, z) {
+  const n1 = perlin2(x * 0.05 + 12.3, z * 0.05 - 7.1);
+  const n2 = perlin2(x * 0.09 - 3.4,  z * 0.09 + 5.6);
+  const n3 = perlin2(x * 0.13 + 8.8,  z * 0.13 + 2.2);
+  const n4 = perlin2(x * 0.21 - 1.1,  z * 0.21 - 9.9);
+  return [x + n1 * 2.4 + n3 * 1.0, z + n2 * 2.4 + n4 * 1.0];
+}
+
+function lakeFieldAt(x, z) {
+  const [wx, wz] = warp(x, z);
+  let f = 0;
+  for (const [cx, cz, r] of LAKE_BLOBS) {
+    const d = Math.hypot(wx - cx, wz - cz);
+    f += smoothstep(r, r * 0.25, d);
+  }
+  f = Math.min(1, f);
+  // Gentle coastline irregularity — kept low so the shore never detaches into
+  // separate puddles.
+  const coast = perlin2(x * 0.26 + 4.2, z * 0.26 - 6.6) * 0.4
+              + perlin2(x * 0.60 - 2.0, z * 0.60 + 3.3) * 0.16;
+  f += coast * f * (1 - f) * 0.9;
+  return THREE.MathUtils.clamp(f, 0, 1);
+}
+
+// True-space check (no domain warp) for "is (x,z) actually near a lake blob's
+// edge". lakeFieldAt warps the sample point by up to a few units before
+// measuring distance to blob centers (that's what gives the coastline its
+// organic wobble), which means a point can satisfy a narrow lakeFieldAt
+// threshold band while sitting several real units away from the visible
+// shoreline — exactly what produced stray reed clumps out in open grass, far
+// from any actual water. Reed placement below now requires BOTH: the
+// warped-space li band (keeps the density/falloff feel) AND this unwarped
+// check (keeps it geometrically honest).
+function nearRealShore(x, z, maxDist) {
+  for (const [cx, cz, r] of LAKE_BLOBS) {
+    if (Math.abs(Math.hypot(x - cx, z - cz) - r) < maxDist) return true;
+  }
+  return false;
+}
+
+const BEACH_CX = 1, BEACH_CZ = -14;
+function beachInfluence(x, z) {
+  return smoothstep(5.4, 1.2, Math.hypot(x - BEACH_CX, z - BEACH_CZ));
+}
+
+const WATER_LEVEL = -0.34;
+const BASIN_FLOOR = -1.35;
+const BOWL_INNER = 15, BOWL_OUTER = 34, BOWL_AMP = 2.6;
+
+function heightAt(x, z) {
+  let h = fbm(x, z) * 0.22;
+  const dCenter = Math.hypot(x - LAKE_CX, z - LAKE_CZ);
+  h += smoothstep(BOWL_INNER, BOWL_OUTER, dCenter) * BOWL_AMP;
+  const lakeInf = lakeFieldAt(x, z);
+  if (lakeInf > 0) h = h * (1 - lakeInf) + BASIN_FLOOR * lakeInf;
+  const b = beachInfluence(x, z);
+  if (b > 0) h = h * (1 - b * 0.9) + (WATER_LEVEL + 0.05) * (b * 0.9);
+  for (let i = 0; i < OBJS.length; i++) {
+    if (OBJS[i].onWater) continue;
+    const dx = x - OBJS[i].pos[0], dz = z - OBJS[i].pos[1];
+    h += 0.5 * Math.exp(-(dx * dx + dz * dz) / (2 * 1.35 * 1.35));
+  }
+  return h;
+}
+
+function objectFootprintAt(x, z) {
+  let dirt = 0;
+  for (let i = 0; i < OBJS.length; i++) {
+    if (OBJS[i].onWater) continue;
+    const d = Math.hypot(x - OBJS[i].pos[0], z - OBJS[i].pos[1]);
+    dirt = Math.max(dirt, smoothstep(3.0, 0.7, d));
+  }
+  return dirt;
+}
+
+function smoothPaletteColor(palette, n) {
+  const pos = THREE.MathUtils.clamp(n, 0, 1) * (palette.length - 1);
+  const i0 = Math.floor(pos);
+  const i1 = Math.min(palette.length - 1, i0 + 1);
+  return new THREE.Color(palette[i0]).lerp(new THREE.Color(palette[i1]), pos - i0);
+}
+function floorShadeColor(x, z) {
+  const n = (perlin2(x * 0.42 + 3.7, z * 0.42 - 9.2) * 0.7
+           + perlin2(x * 0.19 - 6.1, z * 0.19 + 1.8) * 0.3 + 1) / 2;
+  return smoothPaletteColor(SEASON.floor, n);
+}
+const SAND = new THREE.Color(SEASON.snow ? 0xE6EAEC : 0xD8C89A);
+
+function terrainColorAt(x, z, h) {
+  const col = floorShadeColor(x, z);
+  col.offsetHSL(0, 0, THREE.MathUtils.clamp(h * 0.05, -0.16, 0.16));
+  // Every object's ground pad reads the same sandy tone as the chair's beach
+  // patch (the chair happened to sit on the sand already; the rest used to
+  // get a separate brown dirt palette, which read as inconsistent).
+  const footprint = objectFootprintAt(x, z);
+  if (footprint > 0) col.lerp(SAND, footprint * 0.85);
+  const b = beachInfluence(x, z);
+  if (b > 0) col.lerp(SAND, b * 0.85);
+  // A sandy/dirt fringe hugging the whole shoreline (real Walden has a bare
+  // margin right at the waterline before the tree line starts) — strongest
+  // right where the water mesh itself fades in (li ~0.10-0.16), fading to
+  // nothing by li=0 so it doesn't bleed into the rest of the forest floor.
+  const shore = smoothstep(0, 0.16, lakeFieldAt(x, z));
+  if (shore > 0) col.lerp(SAND, shore * 0.8);
+  return col;
+}
+
+// A point is dry land only if its ground sits clearly above the waterline AND
+// it's outside the pond field — used to keep every scattered prop out of the
+// water (trees were sneaking into the shallows before).
+function onLand(x, z) {
+  return heightAt(x, z) > WATER_LEVEL + 0.08 && lakeFieldAt(x, z) < 0.02;
+}
+
+// Base terrain plane. SEG raised from 100 (was tuned for a (WORLD+6)*2=92-wide
+// plane, ~0.92 units/segment) to keep a similar segment density now that the
+// plane is GROUND_HALF*2=160 wide — 140 gives ~1.14 units/segment, close to
+// the original, without the vertex count exploding (one-time build cost, not
+// per-frame).
+const SEG = 140;
+let groundGeo = new THREE.PlaneGeometry(GROUND_HALF * 2, GROUND_HALF * 2, SEG, SEG);
+{
+  const pos = groundGeo.attributes.position;
+  for (let i = 0; i < pos.count; i++) pos.setZ(i, heightAt(pos.getX(i), -pos.getY(i)));
+  groundGeo = groundGeo.toNonIndexed();
+  const p2 = groundGeo.attributes.position;
+  const colors = new Float32Array(p2.count * 3);
+  const tmp = new THREE.Color();
+  for (let i = 0; i < p2.count; i++) {
+    tmp.copy(terrainColorAt(p2.getX(i), -p2.getY(i), p2.getZ(i)));
+    colors[i * 3] = tmp.r; colors[i * 3 + 1] = tmp.g; colors[i * 3 + 2] = tmp.b;
+  }
+  groundGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  groundGeo.computeVertexNormals();
+}
+const ground = new THREE.Mesh(groundGeo, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
+ground.rotation.x = -Math.PI / 2;
+ground.position.y = -0.02;
+ground.receiveShadow = true;
+scene.add(ground);
+// NOTE: the ground/beach is deliberately STATIC — it never animates. A real
+// lake's shoreline moves because the WATER's surface rises and falls against
+// a sloped bed, changing how far the water reaches; the sand itself doesn't
+// pulse. An earlier attempt animated the ground's sand-blend color directly,
+// which is why it read as wrong. See buildWaterMesh/updateWaterWake for where
+// the moving waterline actually lives now.
+
+// Outer skirt — a flattened, lower-resolution fallback layer beyond
+// GROUND_HALF, purely so nothing but ground is ever visible even at extreme
+// aspect ratios (see GROUND_HALF's comment). CULL_R overlaps GROUND_HALF by
+// a few units (rather than matching it exactly) so the two meshes' edges
+// don't leave a hairline gap at the seam — was previously `(WORLD+6)+1`,
+// i.e. one unit OUTSIDE the main ground's own edge, which is exactly a gap,
+// not an overlap (only unnoticeable before because nothing ever looked at it
+// this closely).
+{
+  const SKIRT_HALF = 140;
+  const CULL_R = GROUND_HALF - 4;
+  let skirtGeo = new THREE.PlaneGeometry(SKIRT_HALF * 2, SKIRT_HALF * 2, 28, 28);
+  const sp = skirtGeo.attributes.position;
+  for (let i = 0; i < sp.count; i++) sp.setZ(i, heightAt(sp.getX(i), -sp.getY(i)) * 0.5);
+  skirtGeo.rotateX(-Math.PI / 2);
+  skirtGeo = skirtGeo.toNonIndexed();
+  const sp2 = skirtGeo.attributes.position;
+  const positions = [], colors = [];
+  const stmp = new THREE.Color();
+  for (let f = 0; f < sp2.count; f += 3) {
+    let cx = 0, cz = 0;
+    for (let k = 0; k < 3; k++) { cx += sp2.getX(f + k); cz += sp2.getZ(f + k); }
+    cx /= 3; cz /= 3;
+    if (Math.hypot(cx, cz) < CULL_R) continue;
+    for (let k = 0; k < 3; k++) {
+      const vx = sp2.getX(f + k), vz = sp2.getZ(f + k), vh = sp2.getY(f + k);
+      stmp.copy(terrainColorAt(vx, vz, vh));
+      positions.push(vx, vh, vz);
+      colors.push(stmp.r, stmp.g, stmp.b);
+    }
+  }
+  const sg = new THREE.BufferGeometry();
+  sg.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  sg.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  sg.computeVertexNormals();
+  const skirt = new THREE.Mesh(sg, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
+  skirt.position.y = -0.02;
+  scene.add(skirt);
+}
+
+// ── Water ────────────────────────────────────────────────────────────────────
+// Summer/spring/autumn: translucent pond with a physics-style vertex-wake
+// ripple (see updateWaterWake). Winter: the pond is frozen solid — an opaque
+// pale ice sheet the deer walks across (no ripples).
+let waterGeo = null, waterBaseColor = null, waterMesh = null;
+// Per-vertex spatial phases for the two crossed ambient waves — precomputed once
+// at build so the per-frame ambient pass is just two sin() lookups per vertex
+// (no spatial math). See updateWaterWake.
+let waterPhaseA = null, waterPhaseB = null;
+// Per-vertex LAKEBED height (static — the bed doesn't move, only the water
+// over it does). This is the whole basis of the moving waterline: every frame
+// the water's own oscillating surface Y is compared against this, and where
+// the surface drops below the bed the water simply isn't there (alpha 0). On
+// a gently-sloped bed a small vertical swell sweeps the visible edge a long
+// way horizontally — which is exactly how a real shoreline moves, and why
+// the ground itself never needs to animate.
+let waterBedH = null;
+// Per-vertex wind-phase (position along the wind direction), for the traveling
+// swell — precomputed since it's pure static geometry.
+let waterWindPhase = null;
+let WATER_SHORE_COLOR = null, WATER_FOAM_COLOR = null;
+// The two ambient-wave vectors, hoisted out of buildWaterMesh's local scope —
+// see waterSurfaceHeightAt.
+let WATER_KA_X = 0, WATER_KA_Z = 0, WATER_KB_X = 0, WATER_KB_Z = 0;
+function buildWaterMesh() {
+  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  for (const [cx, cz, r] of LAKE_BLOBS) {
+    minX = Math.min(minX, cx - r); maxX = Math.max(maxX, cx + r);
+    minZ = Math.min(minZ, cz - r); maxZ = Math.max(maxZ, cz + r);
+  }
+  const w = maxX - minX, d = maxZ - minZ;
+  const cx = (minX + maxX) / 2, cz = (minZ + maxZ) / 2;
+  // Resolution: raised from 2.1/unit now that indexing cut the vertex count
+  // ~4x — the waterline's sharpness is limited by quad size (the edge can only
+  // move in steps of one quad's worth of bed height), so a finer grid buys a
+  // cleaner travelling edge, and the indexed mesh is still well under the old
+  // non-indexed count even at this density.
+  const segX = Math.max(24, Math.round(w * 2.8));
+  const segZ = Math.max(24, Math.round(d * 2.8));
+
+  const geo = new THREE.PlaneGeometry(w, d, segX, segZ);
+  geo.rotateX(-Math.PI / 2);
+  geo.translate(cx, 0, cz);
+  const src = geo.attributes.position;
+  const srcIdx = geo.index;
+
+  const shallow = new THREE.Color(SEASON.water.shallow);
+  const deep    = new THREE.Color(SEASON.water.deep);
+  const shore   = new THREE.Color(SEASON.water.shore);
+  const FOAM    = new THREE.Color(0xF4F8F6);
+  const ice     = new THREE.Color(0xDCE6EA);
+  const iceDeep = new THREE.Color(0xB6C6CE);
+  WATER_SHORE_COLOR = shore;
+  WATER_FOAM_COLOR = FOAM;
+
+  // Kept INDEXED (was toNonIndexed before). Two reasons, both load-bearing:
+  // (1) computeVertexNormals on a non-indexed mesh gives every triangle's 3
+  // verts the same face normal — i.e. faceted shading, no matter what
+  // flatShading says — so a smooth moving swell was impossible to light
+  // correctly. Indexed lets normals average across shared faces → smooth.
+  // (2) A grid deduped to shared verts is ~6x fewer vertices than the
+  // non-indexed expansion (each quad's corners are reused), which is what
+  // buys the budget to recompute normals EVERY frame (see updateWaterWake) —
+  // and without per-frame normals the surface can move all it likes and
+  // still render as a flat sheet, which is exactly what it was doing.
+  const vertMap = new Map();          // "x,z" -> new vertex index
+  const positions = [], colors = [], indices = [], bed = [], windPh = [];
+  const vcol = new THREE.Color();
+  // Deepest the swell can ever pull the surface below WATER_LEVEL — used to
+  // keep any face the water could EVER uncover/recover, so the waterline has
+  // real geometry to travel across instead of stopping at a baked-in edge.
+  const SWELL_HEADROOM = 0.55;
+  const addVert = (vx, vz) => {
+    const key = vx + ',' + vz;
+    let vi = vertMap.get(key);
+    if (vi !== undefined) return vi;
+    vi = positions.length / 3;
+    vertMap.set(key, vi);
+    const inf = lakeFieldAt(vx, vz);
+    if (SEASON.ice) {
+      // Frozen solid: clean pale ice, slightly deeper-toned toward the
+      // middle. Deliberately NO crack/streak detailing — two attempts at
+      // per-vertex crack lines (dark noise-threshold blotches, then bright
+      // ridge-noise lines) both read as visual noise at this mesh
+      // resolution rather than texture; Morris asked for them gone. No
+      // swell either — a frozen surface doesn't rise and fall.
+      vcol.copy(ice).lerp(iceDeep, THREE.MathUtils.clamp((inf - 0.3) / 0.6, 0, 1));
+    } else {
+      // Only the shallow→deep DEPTH gradient is baked (a real, static
+      // property of the bed). Shore tint, foam and the water's actual
+      // extent are all recomputed per frame from the live surface height
+      // vs. the bed — see updateWaterWake.
+      vcol.copy(shallow).lerp(deep, THREE.MathUtils.clamp((inf - 0.30) / 0.55, 0, 1));
+    }
+    positions.push(vx, 0, vz);
+    colors.push(vcol.r, vcol.g, vcol.b, 1);
+    bed.push(heightAt(vx, vz));
+    windPh.push(vx * WIND_DIR_X + vz * WIND_DIR_Z);
+    return vi;
+  };
+  for (let f = 0; f < srcIdx.count; f += 3) {
+    const a = srcIdx.getX(f), b2 = srcIdx.getX(f + 1), c2 = srcIdx.getX(f + 2);
+    let minInf = Infinity, minGroundH = Infinity;
+    for (const vi of [a, b2, c2]) {
+      const vx = src.getX(vi), vz = src.getZ(vi);
+      minInf = Math.min(minInf, lakeFieldAt(vx, vz));
+      minGroundH = Math.min(minGroundH, heightAt(vx, vz));
+    }
+    // Keep anything the water can plausibly reach at ANY point in the swell
+    // cycle. The old cull (`minInf < 0.10` + drop any face whose ground pokes
+    // above the waterline) is precisely why the edge could never move: every
+    // triangle that would become newly-wet had already been deleted at build
+    // time, so the boundary was frozen into the geometry itself.
+    if (minInf < 0.02) continue;
+    if (minGroundH > WATER_LEVEL + SWELL_HEADROOM) continue;
+    indices.push(addVert(src.getX(a), src.getZ(a)),
+                 addVert(src.getX(b2), src.getZ(b2)),
+                 addVert(src.getX(c2), src.getZ(c2)));
+  }
+  geo.dispose();
+  waterGeo = new THREE.BufferGeometry();
+  waterGeo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  // itemSize 4 (RGBA): Three.js enables USE_COLOR_ALPHA when a vertexColors
+  // material sees a 4-component color attribute, so per-vertex alpha works —
+  // that's what lets the water fade out exactly where its surface drops below
+  // the bed, giving a real receding waterline rather than a painted one.
+  waterGeo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 4));
+  waterGeo.setIndex(indices);
+  waterGeo.computeVertexNormals();
+  waterBedH = Float32Array.from(bed);
+  waterWindPhase = Float32Array.from(windPh);
+  waterBaseColor = Float32Array.from(waterGeo.attributes.color.array);
+
+  // Precompute the two ambient-wave spatial phases per vertex (dot of position
+  // with two different wave vectors). Per frame we only add t*speed and take a
+  // sin — no per-vertex spatial math on the hot path.
+  // Wave A travels along the season's actual wind direction (real wind-driven
+  // ripple travels downwind); wave B is a secondary cross-chop at a nearby
+  // angle offset, so the surface doesn't read as perfectly parallel lines.
+  // kAx/kAz/kBx/kBz are hoisted to module scope (not just a local block) so
+  // waterSurfaceHeightAt (below) can compute the SAME wave at any arbitrary
+  // (x,z) — in particular the deer's own position — not just at mesh
+  // vertices, which is what lets the deer's float height genuinely track the
+  // water surface instead of a disconnected approximation of it.
+  {
+    const wm = SEASON.waterMotion, s = wm.scale;
+    WATER_KA_X = WIND_DIR_X * s * 0.78; WATER_KA_Z = WIND_DIR_Z * s * 0.78;
+    const _crossRad = _windRad + THREE.MathUtils.degToRad(55);
+    WATER_KB_X = Math.sin(_crossRad) * s * 0.85; WATER_KB_Z = -Math.cos(_crossRad) * s * 0.85;
+    const parr = waterGeo.attributes.position.array;
+    const vn = waterGeo.attributes.position.count;
+    waterPhaseA = new Float32Array(vn);
+    waterPhaseB = new Float32Array(vn);
+    for (let i = 0; i < vn; i++) {
+      const vx = parr[i * 3], vz = parr[i * 3 + 2];
+      waterPhaseA[i] = vx * WATER_KA_X + vz * WATER_KA_Z;
+      waterPhaseB[i] = vx * WATER_KB_X + vz * WATER_KB_Z;
+    }
+  }
+
+  waterMesh = new THREE.Mesh(waterGeo, new THREE.MeshLambertMaterial({
+    vertexColors: true, transparent: !SEASON.ice, opacity: SEASON.ice ? 1 : 0.88,
+    flatShading: false,
+  }));
+  waterMesh.position.y = SEASON.ice ? WATER_LEVEL + 0.01 : WATER_LEVEL;
+  waterMesh.receiveShadow = true;
+  scene.add(waterMesh);
+}
+
+// ── Collision ────────────────────────────────────────────────────────────────
+// Objects are HARD hitboxes — the deer is blocked. Trees are SOFT — they get
+// nudged aside by the deer (and spring back) instead of stopping it, so the
+// deer never gets hung up on a trunk (see updateTrees).
+const COLLIDERS = []; // hard: objects only { x, z, r }
+// Soft: { mesh, idx, bx, bz, baseY, scale, ox, oz, pushRotZ, pushRotX, flex,
+// windSeed }. `mesh`/`idx` point at a shared THREE.InstancedMesh + this
+// tree's slot in it (see "Instanced trees" below) — there is no per-tree
+// Object3D anymore, so every per-frame update (wind sway, deer-push lean)
+// writes a Matrix4 into that slot instead of touching Group.position/rotation.
+const TREES = [];
+const BUSHES = [];    // wind-only, no deer collision: { g, bx, bz, flex, windSeed }
+const DEER_R = 0.42;
+// Radii (squared, for cheap comparison) for masking the ambient water wave
+// near the deer's body — see updateWaterWake. Shrunk (was 1.3x/3.2x) now
+// that the deer's own Y position tracks waterSurfaceHeightAt while swimming
+// (see SWIM_DEPTH_MIN/MAX below): since the body moves WITH the water, a
+// wide dead-flat halo around it is no longer needed to prevent clipping —
+// only a small margin for the sharpest local variation right at the body.
+// This is what makes the water immediately around/under the deer ("the
+// puddle") actually move like the rest of the lake instead of sitting in a
+// large static patch.
+const AMBIENT_MASK_CLEAR_R2 = (DEER_R * 0.85) ** 2;
+const AMBIENT_MASK_FULL_R2 = (DEER_R * 1.5) ** 2;
+// Per-species/per-prop sway stiffness (lower = stiffer) and a random per-instance
+// phase offset (windSeed) so neighboring plants don't sway in perfect lockstep —
+// see updateTreeWind/updateBushWind, which use these plus a position-based
+// traveling-wave phase so gusts visibly sweep across the field in wind direction.
+function makeWindSeed(x, z) { return hash2(x * 3.1, z * 7.7) * Math.PI * 2; }
+// Registers one instance slot in TREES (called from finalizeInstancedTrees,
+// once per placed tree, after the InstancedMesh it lives in has been built).
+function registerTreeInstance(meshRef, idx, x, z, baseY, scale, flex) {
+  TREES.push({ mesh: meshRef, idx, bx: x, bz: z, baseY, scale,
+               ox: 0, oz: 0, pushRotZ: 0, pushRotX: 0,
+               flex, windSeed: makeWindSeed(x, z) });
+}
+// Spatial grid for TREES (built once, after scatter, below) — lets updateTrees
+// look up only the trees near the deer instead of scanning all ~1500 of them
+// every frame. TREE_CELL is > 2×TREE_PUSH_R (defined near updateTrees) so a
+// 3×3 neighborhood always covers the deer's full push radius.
+const TREE_CELL = 2.4;
+const treeGrid = new Map(); // "cellX,cellZ" -> tree[]
+function treeCellKey(x, z) { return Math.floor(x / TREE_CELL) + ',' + Math.floor(z / TREE_CELL); }
+
+// ── Trees: Walden Woods (white pine + oak + hickory) ─────────────────────────
+function nearAnyObject(x, z, margin) {
+  for (let i = 0; i < OBJS.length; i++) {
+    if (Math.hypot(x - OBJS[i].pos[0], z - OBJS[i].pos[1]) < margin) return true;
+  }
+  return false;
+}
+function pineCrownColor() { return SEASON.pine[(Math.random() * SEASON.pine.length) | 0]; }
+function broadleafColor() { return SEASON.broadleaf[(Math.random() * SEASON.broadleaf.length) | 0]; }
+
+// ── Instanced trees ──────────────────────────────────────────────────────────
+// Was: every scattered tree built its own unique THREE.Group of individually-
+// sized Mesh parts, each defaulting to castShadow=true — ~1100+ trees × 2-4
+// parts ≈ ~2750 real draw calls in the main pass, DOUBLED again in the
+// shadow-depth pass (no InstancedMesh anywhere). That's the dominant
+// draw-call cost in the whole scene (2026-07-16 perf audit).
+//
+// Now: each species gets TREE_VARIANTS (8) pre-built "prefab" geometries —
+// trunk + canopy parts merged into ONE local-space BufferGeometry apiece,
+// with per-part color BAKED IN as a vertex-color attribute (mergeGeometries
+// requires matching attribute sets, so every part gets a 'color' attribute
+// before merging). Every placed tree of a given species/variant becomes one
+// slot in a shared THREE.InstancedMesh for that variant — position/rotation/
+// scale live in the instance matrix, not a per-tree Object3D. Total draw
+// calls for ~1100 trees: at most 3 species × 8 variants = 24 (down from
+// ~2750), and castShadow/receiveShadow on an InstancedMesh costs ONE draw
+// call for the whole batch in the shadow pass too.
+//
+// A tree's random size (`th` in the old per-tree code) scaled EVERY dimension
+// of its geometry uniformly — trunk radius, height, canopy size, position
+// offsets, all multiplied by the same th. That means building each variant at
+// a canonical th=1 and applying th as a uniform instance scale afterward is
+// mathematically identical to the old per-tree-unique geometry, just moved
+// from geometry-bake-time to instance-transform-time.
+//
+// Trade-off (flagged, not hidden): variety drops from "every tree
+// mathematically unique" to "8 repeated prefabs per species, each randomly
+// resized/recolored per instance" — a standard game-dev technique, and
+// imperceptible walking through a dense forest, but not literally identical
+// to before. A subtle per-instance color jitter (instanceColor) is layered on
+// top specifically to soften the "same prefab repeated" look further.
+const TREE_VARIANTS = 8;
+const TREE_MAT = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+const TREE_INSTANCED_MESHES = []; // every InstancedMesh built below, for the
+                                   // per-frame instanceMatrix.needsUpdate pass
+
+function colorizeGeometry(geo, hex) {
+  const c = new THREE.Color(hex);
+  const n = geo.attributes.position.count;
+  const colors = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) { colors[i * 3] = c.r; colors[i * 3 + 1] = c.g; colors[i * 3 + 2] = c.b; }
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  return geo;
+}
+// parts: [{ geo, color }] in LOCAL space (already translated/rotated/scaled
+// to their final position within the tree) — merges into one geometry so the
+// whole tree becomes a single instance slot.
+function mergeParts(parts) {
+  // mergeGeometries requires ALL inputs indexed or ALL non-indexed — Cylinder/
+  // ConeGeometry are indexed but IcosahedronGeometry (oak/hickory canopy
+  // blobs) is not, so mixing trunk+canopy parts failed until every part is
+  // normalized to non-indexed first (safe for flatShading, which computes
+  // face normals from screen-space derivatives regardless of indexing).
+  const geos = parts.map(p => {
+    const g = p.geo.index ? p.geo.toNonIndexed() : p.geo;
+    if (g !== p.geo) p.geo.dispose();
+    return colorizeGeometry(g, p.color);
+  });
+  const merged = mergeGeometries(geos, false);
+  geos.forEach(g => g.dispose());
+  return merged;
+}
+
+function pineVariantGeometry() {
+  const th = 1; // canonical size — real per-tree size applied as instance scale
+  const trunk = new THREE.CylinderGeometry(0.05, 0.09, th * 0.36, 5);
+  trunk.translate(0, th * 0.17, 0);
+  const lower = new THREE.ConeGeometry(th * 0.32, th * 0.52, 6);
+  lower.translate(0, th * 0.52, 0);
+  const upper = new THREE.ConeGeometry(th * 0.22, th * 0.44, 6);
+  upper.translate(0, th * 0.84, 0);
+  const parts = [
+    { geo: trunk, color: C.brownDark },
+    { geo: lower, color: pineCrownColor() },
+    { geo: upper, color: pineCrownColor() },
+  ];
+  if (SEASON.snow) {
+    const cap = new THREE.ConeGeometry(th * 0.155, th * 0.20, 6);
+    cap.translate(0, th * 1.02, 0);
+    parts.push({ geo: cap, color: 0xE8EEF0 });
+  }
+  return mergeParts(parts);
+}
+
+// Wide-spreading oak. Winter: bare limbs that ORIGINATE at the trunk top (no
+// gap between limb and trunk — the limb's inner half overlaps the trunk).
+// Rotation order matters here: an Object3D with rotation.set(rx, 0, rz) under
+// THREE's default 'XYZ' Euler order composes as Rz*Rx*v — reproduced below by
+// baking geo.rotateX(rx) THEN geo.rotateZ(rz) (each call transforms the
+// ALREADY-rotated vertices, so calling X then Z gives Rz*(Rx*v), the same
+// order). The old code's `limb.translateY(len*0.4)` ran on an object already
+// positioned+rotated, i.e. a translate along the LOCAL (rotated) Y axis
+// before the position offset — equivalent to translating in local space
+// FIRST, then rotating, then translating by position (T_pos * R * T_local).
+function oakVariantGeometry() {
+  const th = 1;
+  const trunkH = th * (SEASON.bare ? 0.95 : 0.7);
+  const trunk = new THREE.CylinderGeometry(0.08, 0.12, trunkH, 6);
+  trunk.translate(0, trunkH * 0.5, 0);
+  const parts = [{ geo: trunk, color: C.brown }];
+  if (SEASON.bare) {
+    const top = trunkH * 0.92;
+    for (let k = 0; k < 5; k++) {
+      const ang = (k / 5) * Math.PI * 2 + Math.random() * 0.4;
+      const len = th * 0.6;
+      const limb = new THREE.CylinderGeometry(0.02, 0.045, len, 4);
+      limb.translate(0, len * 0.4, 0);
+      limb.rotateX(Math.sin(ang) * 0.9);
+      limb.rotateZ(Math.cos(ang) * 0.9);
+      limb.translate(0, top, 0);
+      parts.push({ geo: limb, color: C.brown });
+    }
+  } else {
+    const col = broadleafColor();
+    const blobs = [[0, th * 0.9, 0, 0.42], [-0.22, th * 0.82, 0.1, 0.30],
+                   [0.24, th * 0.84, -0.08, 0.30], [0.02, th * 0.78, -0.22, 0.26]];
+    blobs.forEach(([bx, by, bz, s]) => {
+      const geo = new THREE.IcosahedronGeometry(s * (0.85 + Math.random() * 0.3), 0);
+      geo.scale(1, 0.85, 1);
+      geo.translate(bx, by, bz);
+      parts.push({ geo, color: Math.random() < 0.75 ? col : broadleafColor() });
+    });
+  }
+  return mergeParts(parts);
+}
+
+function hickoryVariantGeometry() {
+  const th = 1;
+  const trunkH = th * (SEASON.bare ? 0.8 : 0.6);
+  const trunk = new THREE.CylinderGeometry(0.05, 0.085, trunkH, 5);
+  trunk.translate(0, trunkH * 0.5, 0);
+  const parts = [{ geo: trunk, color: C.brown }];
+  if (SEASON.bare) {
+    const top = trunkH * 0.9;
+    for (let k = 0; k < 4; k++) {
+      const ang = (k / 4) * Math.PI * 2 + Math.random();
+      const len = th * 0.5;
+      const limb = new THREE.CylinderGeometry(0.015, 0.035, len, 4);
+      limb.translate(0, len * 0.4, 0);
+      limb.rotateX(Math.sin(ang) * 0.7);
+      limb.rotateZ(Math.cos(ang) * 0.7);
+      limb.translate(0, top, 0);
+      parts.push({ geo: limb, color: C.brown });
+    }
+  } else {
+    const col = broadleafColor();
+    const c1 = new THREE.IcosahedronGeometry(th * 0.26, 0);
+    c1.scale(1, 1.25, 1);
+    c1.translate(0, th * 0.72, 0);
+    parts.push({ geo: c1, color: col });
+    const c2 = new THREE.IcosahedronGeometry(th * 0.20, 0);
+    c2.translate(0.1, th * 0.9, 0.05);
+    parts.push({ geo: c2, color: col });
+  }
+  return mergeParts(parts);
+}
+
+// Queued placements — scatterPine/Oak/Hickory just record {x,z,th,variant}
+// during the scatter loops below; finalizeInstancedTrees() (called once,
+// after ALL scatter loops run) does the actual InstancedMesh construction,
+// since InstancedMesh needs a fixed instance count up front and we don't know
+// each variant's final population until scattering is done.
+const pinePlacements = [], oakPlacements = [], hickoryPlacements = [];
+function scatterPine(x, z) {
+  const th = 0.85 + Math.random() * 1.0;
+  pinePlacements.push({ x, z, th, variant: (Math.random() * TREE_VARIANTS) | 0 });
+}
+function scatterOak(x, z) {
+  const th = 0.55 + Math.random() * 0.5;
+  oakPlacements.push({ x, z, th, variant: (Math.random() * TREE_VARIANTS) | 0 });
+}
+function scatterHickory(x, z) {
+  const th = 0.9 + Math.random() * 0.7;
+  hickoryPlacements.push({ x, z, th, variant: (Math.random() * TREE_VARIANTS) | 0 });
+}
+
+const _instDummy = new THREE.Object3D();
+// Builds the InstancedMeshes for one species: `variantFn` builds one prefab
+// geometry, `placements` is the queued {x,z,th,variant} list, `flex` is the
+// species' wind-sway stiffness (same constant the old per-species
+// registerTree() calls used).
+function buildInstancedSpecies(placements, variantFn, flex) {
+  if (placements.length === 0) return;
+  const buckets = Array.from({ length: TREE_VARIANTS }, () => []);
+  for (const p of placements) buckets[p.variant].push(p);
+  const variantGeoms = Array.from({ length: TREE_VARIANTS }, variantFn);
+  for (let v = 0; v < TREE_VARIANTS; v++) {
+    const bucket = buckets[v];
+    if (bucket.length === 0) { variantGeoms[v].dispose(); continue; }
+    const im = new THREE.InstancedMesh(variantGeoms[v], TREE_MAT, bucket.length);
+    im.castShadow = true;
+    im.receiveShadow = true;
+    for (let i = 0; i < bucket.length; i++) {
+      const p = bucket[i];
+      const baseY = heightAt(p.x, p.z);
+      _instDummy.position.set(p.x, baseY, p.z);
+      _instDummy.rotation.set(0, 0, 0);
+      _instDummy.scale.setScalar(p.th);
+      _instDummy.updateMatrix();
+      im.setMatrixAt(i, _instDummy.matrix);
+      // Subtle per-instance brightness jitter so repeated prefabs don't read
+      // as obviously cloned — multiplies the baked vertex colors.
+      const j = 1 + (Math.random() - 0.5) * 0.16;
+      im.setColorAt(i, new THREE.Color(j, j, j));
+      registerTreeInstance(im, i, p.x, p.z, baseY, p.th, flex);
+    }
+    im.instanceMatrix.needsUpdate = true;
+    if (im.instanceColor) im.instanceColor.needsUpdate = true;
+    scene.add(im);
+    TREE_INSTANCED_MESHES.push(im);
+  }
+}
+function finalizeInstancedTrees() {
+  buildInstancedSpecies(pinePlacements, pineVariantGeometry, 0.6);    // pines are stiffer/lower-profile — less sway
+  buildInstancedSpecies(oakPlacements, oakVariantGeometry, 1.0);      // wide broadleaf canopy sways more than a pine
+  buildInstancedSpecies(hickoryPlacements, hickoryVariantGeometry, 0.9);
+}
+
+function scatterBush(x, z) {
+  const h = heightAt(x, z);
+  const g = new THREE.Group();
+  g.position.set(x, h, z);
+  const clumps = 1 + Math.floor(Math.random() * 2);
+  for (let k = 0; k < clumps; k++) {
+    const s = 0.09 + Math.random() * 0.11;
+    let col = Math.random() > 0.5 ? 0x3E6428 : 0x355A22;
+    if (SEASON.snow) col = snowify(col, 0.55);
+    else if (SEASON.name === 'Autumn') col = Math.random() > 0.5 ? 0x9A5A2A : 0x7A4A28;
+    const b = mesh(new THREE.IcosahedronGeometry(s, 0), col, g);
+    b.position.set((Math.random() - 0.5) * 0.22, s * 0.65, (Math.random() - 0.5) * 0.22);
+    b.scale.y = 0.7;
+  }
+  g.traverse(c => { c.castShadow = false; }); // small prop — skip the shadow pass
+  scene.add(g);
+  // Small/light — sways more readily per unit wind than a tree does.
+  BUSHES.push({ g, bx: x, bz: z, flex: 1.3, windSeed: makeWindSeed(x, z) });
+}
+
+function scatterReed(x, z) {
+  const h = heightAt(x, z);
+  const g = new THREE.Group();
+  g.position.set(x, h, z);
+  const th = 0.28 + Math.random() * 0.22;
+  const col = SEASON.snow ? 0xB6A98E : (SEASON.name === 'Autumn' ? 0x9A8A4E : 0x5A7A4E);
+  for (let k = 0; k < 3; k++) {
+    const reed = mesh(new THREE.CylinderGeometry(0.012, 0.02, th, 4), col, g);
+    reed.position.set((Math.random() - 0.5) * 0.12, th * 0.5, (Math.random() - 0.5) * 0.12);
+    reed.rotation.z = (Math.random() - 0.5) * 0.25;
+  }
+  g.traverse(c => { c.castShadow = false; });
+  scene.add(g);
+}
+
+function scatterRock(x, z) {
+  const h = heightAt(x, z);
+  let color = Math.random() > 0.5 ? 0x6B7A5E : C.stone;
+  if (SEASON.snow) color = snowify(color, 0.6);
+  const s = 0.08 + Math.random() * 0.12;
+  const r = mesh(new THREE.DodecahedronGeometry(s, 0), color, scene);
+  r.position.set(x, h + s * (0.10 + Math.random() * 0.14), z);
+  r.rotation.set(Math.random(), Math.random() * Math.PI, Math.random());
+  r.castShadow = false;
+}
+
+// ── Project Objects ───────────────────────────────────────────────────────────
+// Shared winter snow dusting for the 6 interactable objects — a thin flattened
+// box, no-op outside SEASON.snow. castShadow off (thin decorative dusting, not
+// worth the shadow-pass cost — same call made for bushes/reeds elsewhere).
+function addSnow(parent, x, y, z, sx, sy, sz, rotY = 0) {
+  if (!SEASON.snow) return;
+  const s = mesh(new THREE.BoxGeometry(sx, sy, sz), 0xEEF3F4, parent);
+  s.position.set(x, y, z);
+  s.rotation.y = rotY;
+  s.castShadow = false;
+}
+function makeTombstone(g) {
+  // Classic rounded-arch grave marker — straight sides, flat base, a single
+  // arc across the top — with three short inscription lines on the face.
+  const w = 0.50, h = 0.68, depth = 0.13, r = w / 2;
+  const s = new THREE.Shape();
+  s.moveTo(-r, 0);
+  s.lineTo(-r, h - r);
+  s.absarc(0, h - r, r, Math.PI, 0, true);
+  s.lineTo(r, 0);
+  s.closePath();
+  const slab = mesh(new THREE.ExtrudeGeometry(s, { depth, bevelEnabled: false }), C.stoneLight, g);
+  slab.position.set(0, 0, -depth / 2);
+  const lineGeo = new THREE.BoxGeometry(0.26, 0.035, 0.02);
+  [0.40, 0.31, 0.22].forEach(y => {
+    mesh(lineGeo, C.stone, g).position.set(0, y, depth / 2 + 0.01);
+  });
+  mesh(new THREE.CylinderGeometry(0.35, 0.42, 0.08, 6), C.soil, g).position.y = 0.04;
+  addSnow(g, 0, h - 0.02, 0, w * 0.82, 0.035, depth * 0.9);      // cap across the arch top
+  addSnow(g, 0, 0.085, 0, 0.60, 0.03, 0.60);                      // dusting on the soil mound
+}
+function makeCrown(g) {
+  const s = new THREE.Shape();
+  s.moveTo(-0.26, 0.00);
+  s.lineTo( 0.26, 0.00);
+  s.lineTo( 0.26, 0.14);
+  s.lineTo( 0.17, 0.30);
+  s.lineTo( 0.085, 0.16);
+  s.lineTo( 0.00, 0.34);
+  s.lineTo(-0.085, 0.16);
+  s.lineTo(-0.17, 0.30);
+  s.lineTo(-0.26, 0.14);
+  s.closePath();
+  const crown = mesh(new THREE.ExtrudeGeometry(s, { depth: 0.10, bevelEnabled: false }), C.gold, g);
+  crown.position.z = -0.05; crown.position.y = 0.05;
+  // Small dustings on the 3 points — same y-values as the shape's tips above.
+  [[0, 0.34], [0.17, 0.30], [-0.17, 0.30]].forEach(([px, py]) => {
+    addSnow(g, px, py + 0.06, 0.02, 0.09, 0.03, 0.05);
+  });
+}
+function makeAirplane(g) {
+  const fuselage = mesh(new THREE.CylinderGeometry(0.055, 0.08, 0.62, 8), C.stoneLight, g);
+  fuselage.rotation.z = Math.PI / 2; fuselage.position.y = 0.30;
+  const nose = mesh(new THREE.ConeGeometry(0.055, 0.12, 8), C.ink, g);
+  nose.rotation.z = -Math.PI / 2; nose.position.set(0.37, 0.30, 0);
+  mesh(new THREE.BoxGeometry(0.10, 0.02, 0.62), C.terra, g).position.set(-0.02, 0.30, 0);
+  mesh(new THREE.BoxGeometry(0.02, 0.16, 0.10), C.terra, g).position.set(-0.27, 0.37, 0);
+  mesh(new THREE.BoxGeometry(0.02, 0.02, 0.26), C.terra, g).position.set(-0.27, 0.31, 0);
+  mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.10, 4), C.ink, g).position.set(0, 0.05, 0);
+  addSnow(g, -0.02, 0.375, 0, 0.52, 0.025, 0.14);   // strip along the fuselage/wing top
+  addSnow(g, -0.27, 0.455, 0, 0.14, 0.02, 0.09);     // cap on the tail fin
+}
+function makeBud(g) {
+  // Basic two-leaf sprout — a thin stem splitting into a symmetric pair of
+  // green leaves, no flower/bud.
+  const mound = mesh(new THREE.SphereGeometry(0.16, 6, 4), C.soil, g);
+  mound.scale.set(1.1, 0.28, 1.1); mound.position.y = 0.03;
+  mesh(new THREE.CylinderGeometry(0.018, 0.026, 0.34, 5), 0x4A6A2C, g).position.y = 0.19;
+  [-0.6, 0.6].forEach(rot => {
+    const leaf = mesh(new THREE.ConeGeometry(0.075, 0.24, 4), C.meadow, g);
+    leaf.position.set(Math.sin(rot) * 0.08, 0.34, 0);
+    leaf.rotation.z = rot;
+    leaf.scale.set(1, 0.55, 1.8);
+  });
+  addSnow(g, 0, 0.075, 0, 0.30, 0.03, 0.30);   // dusting on the soil mound
+}
+function makeChair(g) {
+  mesh(new THREE.BoxGeometry(0.56, 0.08, 0.46), C.stone, g).position.y = 0.41;
+  [[-0.20,-0.18],[0.20,-0.18],[-0.20, 0.18],[0.20, 0.18]].forEach(([lx, lz]) => {
+    mesh(new THREE.CylinderGeometry(0.033, 0.027, 0.42, 4), C.stoneLight, g).position.set(lx, 0.21, lz);
+  });
+  mesh(new THREE.BoxGeometry(0.56, 0.065, 0.055), C.stone, g).position.set(0, 0.66, -0.20);
+  [-0.18, 0.18].forEach(x => {
+    mesh(new THREE.CylinderGeometry(0.024, 0.024, 0.27, 4), C.stoneLight, g).position.set(x, 0.54, -0.20);
+  });
+  mesh(new THREE.BoxGeometry(0.48, 0.30, 0.04), C.stone, g).position.set(0, 0.26, 0.22);
+  addSnow(g, 0, 0.455, 0, 0.52, 0.025, 0.42);          // seat top
+  addSnow(g, 0, 0.70, -0.20, 0.52, 0.02, 0.05);        // back rail top
+}
+function makeGreyHouse(g) {
+  mesh(new THREE.BoxGeometry(0.46, 0.38, 0.40), C.greyHouse, g).position.y = 0.19;
+  const roof = mesh(new THREE.ConeGeometry(0.36, 0.26, 4), C.terra, g);
+  roof.rotation.y = Math.PI / 4; roof.position.y = 0.51;
+  mesh(new THREE.BoxGeometry(0.10, 0.20, 0.02), C.terra, g).position.set(0, 0.10, 0.21);
+  mesh(new THREE.BoxGeometry(0.09, 0.09, 0.02), C.terra, g).position.set(0.15, 0.24, 0.21);
+  mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.16, 6), C.greyHouseLt, g).position.set(-0.12, 0.58, -0.08);
+  if (SEASON.snow) {
+    // Snow-capped roof — same nested-cone trick as the pine trees' snow caps.
+    const cap = mesh(new THREE.ConeGeometry(0.30, 0.11, 4), 0xEEF3F4, g);
+    cap.rotation.y = Math.PI / 4; cap.position.y = 0.60;
+    cap.castShadow = false;
+  }
+}
+
+// Build the water mesh (needs OBJS + terrain fns, all declared above).
+buildWaterMesh();
+
+// Scatter flora — denser than before (closer to Walden Woods) but still
+// navigable, with clearings kept around the objects.
+// Both loops' sampling bound + count were widened together (2026-07-16):
+// bound (WORLD-1=39) → (TREE_FILL-2=78) is exactly 2x per axis, so count is
+// scaled 4x (area scales with the square) to keep density-per-area — and
+// therefore how thick the forest LOOKS — the same all the way out to
+// GROUND_HALF as it was in the original, smaller play area. Without this,
+// widening the bound alone would have spread the same tree count over 4x the
+// area and the new outer ring would read as visibly sparser ("bald ground"),
+// not just farther out.
+// BEACH_CLEAR: shared threshold for "how sand-influenced can a spot be before
+// anything is still allowed to grow there." Audited 2026-07-16 (Morris: the
+// beach should "remain bare and sand colored," no plants/bushes/anything) —
+// found real violations under the old ad-hoc checks: the general tree loop's
+// own 0.4 cutoff still let trees plant in up to a 34%-sand-blended patch
+// (visibly tinted, not bare), and THREE loops had no beach check at all
+// (bushes, rocks, and — the actual worst offender, verified via a live
+// scatter dump — the shoreline-ring tree pass below, whose ring radius
+// around the largest lake blob geometrically reaches the beach: measured
+// trees planted there at up to 0.85 beachInfluence, i.e. almost dead center
+// in the sand). 0.1 corresponds to roughly the outer ~85% of the beach's own
+// 5.4-unit influence radius — strict enough that nothing with even a mild
+// visible tint gets a plant on it.
+const BEACH_CLEAR = 0.1;
+const TREE_FILL = GROUND_HALF - 2;
+for (let i = 0; i < 4000; i++) {
+  const x = (Math.random() * 2 - 1) * TREE_FILL;
+  const z = (Math.random() * 2 - 1) * TREE_FILL;
+  if (!onLand(x, z)) continue;
+  if (beachInfluence(x, z) > BEACH_CLEAR) continue;
+  if (nearAnyObject(x, z, 2.2)) continue;
+  if (Math.random() < 0.18) continue;
+  const r = Math.random();
+  if (r < 0.45) scatterPine(x, z);
+  else if (r < 0.90) scatterOak(x, z);
+  else scatterHickory(x, z);
+}
+for (let i = 0; i < 2080; i++) {
+  const x = (Math.random() * 2 - 1) * TREE_FILL;
+  const z = (Math.random() * 2 - 1) * TREE_FILL;
+  if (Math.hypot(x - LAKE_CX, z - LAKE_CZ) < WORLD * 0.62) continue;
+  if (!onLand(x, z)) continue;
+  if (nearAnyObject(x, z, 2.2)) continue;   // was missing — let a tree spawn
+                                             // right on top of Cities' house
+  if (Math.random() < 0.10) continue;
+  Math.random() < 0.6 ? scatterPine(x, z) : scatterOak(x, z);
+}
+for (let i = 0; i < 320; i++) {
+  const x = (Math.random() * 2 - 1) * (WORLD - 1);
+  const z = (Math.random() * 2 - 1) * (WORLD - 1);
+  if (!onLand(x, z)) continue;
+  if (beachInfluence(x, z) > BEACH_CLEAR) continue;   // was missing entirely
+  if (nearAnyObject(x, z, 1.6)) continue;
+  if (Math.random() < 0.5) continue;
+  scatterBush(x, z);
+}
+for (let i = 0; i < 150; i++) {
+  const x = (Math.random() * 2 - 1) * (WORLD - 1);
+  const z = (Math.random() * 2 - 1) * (WORLD - 1);
+  const li = lakeFieldAt(x, z);
+  if (li < 0.16 || li >= 0.28) continue;         // narrow band right at the shore
+  if (!nearRealShore(x, z, 3.0)) continue;       // ...and genuinely near the real shoreline (see comment above)
+  if (heightAt(x, z) < WATER_LEVEL + 0.02) continue; // but only on exposed ground
+  if (beachInfluence(x, z) > BEACH_CLEAR) continue;
+  if (Math.random() < 0.5) continue;
+  scatterReed(x, z);
+}
+for (let i = 0; i < 140; i++) {
+  const x = (Math.random() * 2 - 1) * (WORLD - 1);
+  const z = (Math.random() * 2 - 1) * (WORLD - 1);
+  if (!onLand(x, z)) continue;
+  if (beachInfluence(x, z) > BEACH_CLEAR) continue;   // was missing entirely
+  if (nearAnyObject(x, z, 1.5)) continue;
+  scatterRock(x, z);
+}
+
+// Extra shoreline-hugging trees. The uniform scatter passes above are random
+// over the whole map, so they don't reliably thicken the ring just past the
+// sandy fringe the way a real lakeshore does (reference: Walden Pond aerial —
+// forest comes almost right up to a narrow bare beach). Sample directly
+// around each lake blob's own edge instead of relying on chance.
+for (const [bcx, bcz, br] of LAKE_BLOBS) {
+  const ringCount = Math.round(br * 6);
+  for (let i = 0; i < ringCount; i++) {
+    const theta = Math.random() * Math.PI * 2;
+    const rad = br * (1.05 + Math.random() * 0.55);
+    const x = bcx + Math.cos(theta) * rad;
+    const z = bcz + Math.sin(theta) * rad;
+    if (!onLand(x, z)) continue;
+    if (lakeFieldAt(x, z) > 0.01) continue;   // stay clear of the sand fringe itself
+    if (beachInfluence(x, z) > BEACH_CLEAR) continue;   // was missing entirely —
+                                             // this ring's radius (up to 1.6x the
+                                             // largest lake blob) geometrically
+                                             // reaches the beach; verified planting
+                                             // trees at up to 0.85 beachInfluence
+                                             // before this fix
+    if (nearAnyObject(x, z, 2.2)) continue;
+    if (Math.random() < 0.22) continue;
+    Math.random() < 0.55 ? scatterPine(x, z) : scatterOak(x, z);
+  }
+}
+
+// Now that every scatter pass above has queued its placements, actually build
+// the InstancedMeshes (need final per-variant counts before construction) —
+// this is what populates TREES.
+finalizeInstancedTrees();
+
+// Bucket every scattered tree into the spatial grid used by updateTrees
+// (defined earlier, alongside COLLIDERS/TREES) — done once, after TREES is
+// fully populated by the scatter passes above.
+for (let i = 0; i < TREES.length; i++) {
+  const tr = TREES[i];
+  const key = treeCellKey(tr.bx, tr.bz);
+  let bucket = treeGrid.get(key);
+  if (!bucket) treeGrid.set(key, bucket = []);
+  bucket.push(tr);
+}
+
+// Build the interactable objects (scaled up so they stand out over the trees).
+const projectObjects = OBJ_DEFS.map((d, i) => {
+  const g = new THREE.Group();
+  const gy = d.onWater ? WATER_LEVEL : heightAt(d.pos[0], d.pos[1]);
+  g.position.set(d.pos[0], gy, d.pos[1]);
+  g.scale.setScalar(OBJ_SCALE);
+  d.make(g);
+  scene.add(g);
+  if (!d.onWater) COLLIDERS.push({ x: d.pos[0], z: d.pos[1], r: 0.95 });
+  return { grp: g, index: i, onWater: d.onWater, baseY: gy,
+           label: d.label, text: d.text, reaction: d.reaction };
+});
+const crownObj = projectObjects.find(o => o.onWater);
+
+// ── Dog-Deer ──────────────────────────────────────────────────────────────────
+const BASE_Y = 0.18;
+// Fixed spawn point — the deer always starts here (south shore, facing the lake)
+// and the scene eases in around it.
+const SPAWN = new THREE.Vector3(0, BASE_Y, 15);
+const deerRoot = new THREE.Group();
+deerRoot.position.copy(SPAWN);
+scene.add(deerRoot);
+
+function dmesh(geo, c, parent) {
+  const m = new THREE.Mesh(geo, mat(c));
+  m.castShadow = true; m.receiveShadow = true;
+  parent.add(m);
+  return m;
+}
+const bodyShape = new THREE.Shape();
+bodyShape.moveTo( 0,      0.46);
+bodyShape.lineTo(-0.11,   0.35);
+bodyShape.lineTo(-0.21,   0.01);
+bodyShape.lineTo(-0.18,  -0.26);
+bodyShape.lineTo(-0.09,  -0.44);
+bodyShape.lineTo( 0,     -0.47);
+bodyShape.lineTo( 0.09,  -0.44);
+bodyShape.lineTo( 0.18,  -0.26);
+bodyShape.lineTo( 0.21,   0.01);
+bodyShape.lineTo( 0.11,   0.35);
+const bodyMesh = dmesh(new THREE.ExtrudeGeometry(bodyShape, { depth: 0.22, bevelEnabled: false }), C.amber, deerRoot);
+bodyMesh.rotation.x = -Math.PI / 2;
+const neck = dmesh(new THREE.CylinderGeometry(0.060, 0.090, 0.54, 5), C.amber, deerRoot);
+neck.rotation.x = -Math.PI / 5; neck.position.set(0, 0.20, -0.40);
+// Head assembly (skull, snout, nose, eyes, ears, antlers) is a single rigid
+// GROUP pivoting at the neck's tip, not separately-positioned siblings of
+// deerRoot. Any head pose (bow/tilt/graze/dance nod) rotates `headGroup` as
+// one unit, so nothing can visibly separate from anything else it's attached
+// to — the animation rule this whole file now follows. Pivot chosen to match
+// the neck cylinder's own narrow (top) end so the head swings from exactly
+// where the neck actually ends (no seam gap at any rotation angle). Child
+// positions below are the ORIGINAL deerRoot-relative positions minus this
+// pivot, so the assembly looks identical to before at rotation 0.
+const headGroup = new THREE.Group();
+headGroup.position.set(0, 0.46, -0.64); // == old skull.position
+deerRoot.add(headGroup);
+const skull = dmesh(new THREE.CylinderGeometry(0.15, 0.15, 0.13, 7), C.amber, headGroup);
+const snout = dmesh(new THREE.CylinderGeometry(0.050, 0.130, 0.46, 6), C.amber, headGroup);
+snout.rotation.x = -Math.PI / 2; snout.position.set(0, -0.02, -0.25);
+dmesh(new THREE.BoxGeometry(0.13, 0.08, 0.09), C.ink, headGroup).position.set(0, -0.02, -0.50);
+[-0.07, 0.07].forEach(x => {
+  dmesh(new THREE.SphereGeometry(0.032, 5, 4), C.ink, headGroup).position.set(x, 0.07, -0.08);
+});
+[-1, 1].forEach(side => {
+  const ear = dmesh(new THREE.BoxGeometry(0.18, 0.05, 0.13), C.amber, headGroup);
+  ear.position.set(side * 0.21, -0.08, 0);
+  ear.rotation.z = -side * 0.82; ear.rotation.x = 0.18;
+});
+[-1, 1].forEach(side => {
+  const ag = new THREE.Group();
+  ag.position.set(side * 0.08, 0.06, -0.02);
+  headGroup.add(ag);
+  dmesh(new THREE.CylinderGeometry(0.013, 0.028, 0.28, 4), C.brown, ag).position.set(side * 0.03, 0.14, 0);
+  const brow = dmesh(new THREE.CylinderGeometry(0.010, 0.018, 0.16, 4), C.brown, ag);
+  brow.rotation.z = -side * Math.PI / 2; brow.position.set(side * 0.11, 0.03, 0);
+  dmesh(new THREE.CylinderGeometry(0.008, 0.013, 0.14, 4), C.brown, ag).position.set(side * 0.19, 0.10, 0);
+});
+const legDefs = [
+  { x: -0.15, z: -0.22, phase: 0        },
+  { x:  0.15, z: -0.22, phase: Math.PI  },
+  { x: -0.15, z:  0.24, phase: Math.PI  },
+  { x:  0.15, z:  0.24, phase: 0        },
+];
+const legGroups = legDefs.map(({ x, z, phase }) => {
+  const hip = new THREE.Group();
+  hip.position.set(x, 0, z); hip.userData.phase = phase;
+  deerRoot.add(hip);
+  dmesh(new THREE.CylinderGeometry(0.030, 0.013, 0.60, 4), C.amber, hip).position.set(0, -0.30, 0);
+  return hip;
+});
+const tailGrp = new THREE.Group();
+// Pivot = where the tail meets the body. The body's own rear-most point sits
+// at roughly (y=0.11, z=0.47) — the old pivot at z=0.50 floated just past it,
+// leaving a visible notch/gap. Pulled in flush (slightly overlapping) instead.
+tailGrp.position.set(0, 0.11, 0.44);
+tailGrp.rotation.x = -0.50;            // static droop, angled down/back at rest
+deerRoot.add(tailGrp);
+const tail = dmesh(new THREE.BoxGeometry(0.13, 0.10, 0.20), C.amber, tailGrp);
+tail.position.set(0, 0, 0.09);         // box extends outward from the pivot, overlapping the body slightly
+
+// ── Physics-style water wake ─────────────────────────────────────────────────
+// The deer's motion drops expanding wavefronts on the pond. Each frame the water
+// vertices within a small radius of the deer are displaced by the summed,
+// damped, outward-travelling sine rings — a lightweight wave model, not flat
+// decorative rings. Work is culled to the deer's vicinity so cost stays low.
+const WAKE = [];        // { x, z, age }
+const WAKE_MAX = 8;
+let wakeTimer = 0;
+let waterWaked = false;  // was the surface displaced last frame? (for the reset pass)
+function spawnWake(x, z) {
+  WAKE.push({ x, z, age: 0 });
+  if (WAKE.length > WAKE_MAX) WAKE.shift();
+}
+
+// ── Surface disturbance layering ──────────────────────────────────────────
+// The shoreline, the deer's wake rings, and the deer's own contact outline
+// are all the same thing — water meeting something — so they all drive the
+// SAME two colour layers (a wider shore tint, with a narrower foam band
+// inside it) from the SAME palette. Previously the wake blended toward a
+// hardcoded near-white (0.97/0.99/0.97) while the shore used
+// WATER_FOAM_COLOR (0xF4F8F6) — fixed, but a SECOND, subtler mismatch
+// remained even after matching the target colour: the shoreline's foamT
+// SATURATES to a flat 1.0 plateau across its whole EDGE_SOFT band (real
+// foam is a solid line), but the wake ring's derivative-of-Gaussian crest
+// only ever reaches a soft peak of ~0.24 pre-gain — at the old gain
+// (1.15) that peaked around foamT≈0.28, nowhere near saturated, so it
+// blended mostly with whatever colour was already there (usually dark
+// open water near the deer) instead of reading as bright foam. Verified by
+// direct computation: crest·fall peaks at 0.244 (age≈0, d≈0.87), so a gain
+// of ~3.2-3.5 is needed to actually saturate it the way the shore does.
+const RIPPLE_TINT_GAIN = 4.0;   // whole ring disturbance (crest AND trough)
+const RIPPLE_FOAM_GAIN = 3.4;   // crest only → narrower bright line inside the tint
+// The deer's persistent waterline: where its body meets the surface there is
+// an outline whether or not it's moving — exactly like the shore always has
+// one. Two widths give it the same layered structure (wide tint, narrow foam
+// inside), and (see below) both now hit a hard 1.0 exactly at DEER_R —
+// matching the shoreline's own flat plateau — rather than a pulse-dimmed
+// peak that let the underlying (often much darker, deep-water) base colour
+// show through and read as a mismatched tint. Declared here, not with the
+// other water constants up top, because DEER_R is only defined with the
+// collision system above this point.
+const CONTACT_TINT_W = 0.55;
+const CONTACT_FOAM_W = 0.26;
+const CONTACT_MAX_R2 = (DEER_R + CONTACT_TINT_W + 0.1) ** 2;
+// How submerged the deer must be before it has a waterline at all (0 on dry
+// land → 1 once genuinely wet) — keyed off REAL depth (live water surface
+// minus actual ground height, the same waterSurfaceHeightAt/heightAt pair
+// the swim logic in animate() uses for its own `swimDepth`), not the
+// abstract lakeInf field. This is deliberately a much SHALLOWER band than
+// SWIM_DEPTH_MIN/MAX (floating) — a waterline should appear the moment water
+// actually touches the legs, well before the deer is deep enough to float.
+// CONTACT_DEPTH_MIN is shared with the wake-spawn condition in animate() so
+// the two agree by construction: any depth that shows a waterline is also a
+// depth at which walking disturbs the surface.
+const CONTACT_DEPTH_MIN = 0.02, CONTACT_DEPTH_MAX = 0.16;
+function deerContactAmount(deerX, deerZ, gustEnv) {
+  if (SEASON.ice) return 0; // frozen solid — no waterline forms against ice
+  const depth = waterSurfaceHeightAt(deerX, deerZ, gustEnv) - heightAt(deerX, deerZ);
+  return smoothstep(CONTACT_DEPTH_MIN, CONTACT_DEPTH_MAX, depth);
+}
+// The water is a real (if stylized) body of water, not a decorated plane:
+// every frame each vertex's surface height is recomputed as
+//   surfaceY = WATER_LEVEL + swell + ambient chop + deer wake
+// and then compared against that vertex's STATIC lakebed height
+// (waterBedH). The difference is a genuine depth, and EVERYTHING visible
+// derives from it:
+//   depth <= 0        → the water has receded past this point: alpha 0.
+//   depth ~ 0         → the live waterline: foam.
+//   shallow → deep    → shore tint → open-water color.
+// So the edge moves because the surface genuinely rises and falls over a
+// sloped bed (a small vertical swell sweeps the edge a long way horizontally
+// on a gentle slope — real lake behavior), the foam band tracks the edge for
+// free because it's anchored to depth rather than a baked position, and a
+// deer's wake ring perturbs the shoreline simply by being part of surfaceY.
+// The lakebed and beach never move; only the water does.
+function updateWaterWake(dt, deerX, deerZ, gustEnv) {
+  if (!waterGeo || SEASON.ice) return;   // frozen pond: surface doesn't move
+  const wm = SEASON.waterMotion;
+  for (const s of WAKE) s.age += dt;
+  while (WAKE.length && WAKE[0].age > 1.4) WAKE.shift();
+  const active = WAKE.length > 0;
+
+  const posA = waterGeo.attributes.position.array;
+  const colA = waterGeo.attributes.color.array;
+  const n = waterGeo.attributes.position.count;
+  const tA = t * wm.speed, tB = t * wm.speed * 0.8;
+  const halfAmp = wm.amp * 0.5, sh = wm.shimmer;
+  // Once per frame, not per vertex: is the deer actually in the water (and so
+  // does it have a waterline to draw)? Independent of whether it's MOVING —
+  // that's the whole point of the contact outline.
+  const contactAmt = deerContactAmount(deerX, deerZ, gustEnv);
+
+  for (let i = 0; i < n; i++) {
+    const ix = i * 3, ic = i * 4;   // position stride 3, color stride 4 (RGBA)
+    const vx = posA[ix], vz = posA[ix + 2];
+    const ddx = vx - deerX, ddz = vz - deerZ;
+    const dDeer2 = ddx * ddx + ddz * ddz;
+
+    // Everything that lifts the surface is masked to zero right around the
+    // deer's body. The deer's own Y rides a smooth non-oscillating height
+    // (visibleSurfaceHeightAt), so without this a crest could independently
+    // rise into its neck. Same guarantee as before, now covering the swell
+    // too, not just the ambient chop.
+    const bodyMask = dDeer2 < AMBIENT_MASK_FULL_R2
+      ? smoothstep(AMBIENT_MASK_CLEAR_R2, AMBIENT_MASK_FULL_R2, dDeer2)
+      : 1;
+
+    // 1. Wind swell — the slow, large-scale traveling rise/fall of the water
+    //    LEVEL. This is what moves the waterline.
+    const swell = swellAt(waterWindPhase[i], gustEnv);
+    // 2. Ambient chop — small high-frequency surface texture on top.
+    const hA = Math.sin(waterPhaseA[i] + tA);
+    const hB = Math.sin(waterPhaseB[i] + tB);
+    let disp = (swell + (hA + hB) * halfAmp) * bodyMask;
+    // Disturbance layers, gathered from every source, then applied once below.
+    let rippleTint = 0, rippleFoam = 0;
+
+    // 3. Deer swim wake — part of the same surface height, so it perturbs the
+    //    edge and foam exactly like the swell does, instead of being an
+    //    overlay skating across the top.
+    if (active && dDeer2 < 36) {   // only verts within ~6u of the deer
+      for (const s of WAKE) {
+        const d = Math.hypot(vx - s.x, vz - s.z);
+        // Birth radius offset by DEER_R so a fresh ring starts already past the
+        // deer's own body instead of peaking directly under it. Gentle outward
+        // travel (2.0) so rings breathe out rather than snapping away.
+        const ring = d - (DEER_R + s.age * 2.0);
+        if (ring < -1.4 || ring > 0.6) continue;
+        // A SINGLE soft crest per ring (derivative-of-Gaussian, one clean
+        // trough→crest wave) with a long soft fade — reads as a calm rain
+        // ripple, not the old busy multi-band sin(ring*5) stack.
+        const fall = Math.exp(-s.age * 1.3) * Math.exp(-d * 0.12);
+        const wave = ring * Math.exp(-ring * ring * 2.5);
+        disp += wave * fall * 0.26;                  // amplitude ~0.07
+        // Layer 1: the whole ring disturbance (crest AND trough) tints like
+        // shallow water. Layer 2: only the crest carries foam, so the foam
+        // sits as a narrower bright line INSIDE the tint band — the same
+        // wide-tint/narrow-foam structure the shoreline has.
+        const tA2 = Math.abs(wave) * fall * RIPPLE_TINT_GAIN;
+        if (tA2 > rippleTint) rippleTint = tA2;
+        const fA2 = Math.max(0, wave) * fall * RIPPLE_FOAM_GAIN;
+        if (fA2 > rippleFoam) rippleFoam = fA2;
+      }
+    }
+
+    // 4. The deer's own waterline — a persistent outline where its body meets
+    //    the surface, present whether or not it's moving (a standing object in
+    //    water still has a waterline; only wake rings need motion). Same two
+    //    layers, so it matches both the shore and the ripples.
+    if (contactAmt > 0 && dDeer2 < CONTACT_MAX_R2) {
+      const dD = Math.sqrt(dDeer2);
+      const off = Math.abs(dD - DEER_R);   // distance from the body's waterline
+      // "Life" comes from the ring's WIDTH breathing, not its peak brightness
+      // dimming — a brightness pulse (the previous version) meant the outline
+      // never actually reached the shoreline's own saturated foam colour
+      // except at the instant the pulse peaked, so it read as a dimmer,
+      // differently-tinted ring most of the time. Widening/narrowing instead
+      // keeps `off=0` (right at DEER_R) pinned to exactly 1 always, matching
+      // the shore's flat plateau, while still visibly moving.
+      const wobble = 1 + 0.15 * Math.sin(t * 2.2 - dD * 3.0);
+      const cT = contactAmt * (1 - smoothstep(0, CONTACT_TINT_W * wobble, off));
+      if (cT > rippleTint) rippleTint = cT;
+      const cF = contactAmt * (1 - smoothstep(0, CONTACT_FOAM_W * wobble, off));
+      if (cF > rippleFoam) rippleFoam = cF;
+    }
+    posA[ix + 1] = disp;
+
+    // Live depth of water over the static bed at this point.
+    const depth = (WATER_LEVEL + disp) - waterBedH[i];
+
+    // Alpha: the water simply isn't there where it has receded past the bed.
+    // This is the moving waterline — no painted border involved.
+    const wet = smoothstep(0, EDGE_SOFT, depth);
+
+    // ── One layered colour pipeline for every "water meets something" ──
+    // Shoreline, wake rings and the deer's waterline all feed the same two
+    // bands from the same palette, so they read as one material.
+    const tintT = Math.min(1, Math.max(smoothstep(SHORE_TINT_DEPTH, 0, depth), rippleTint));
+    const foamT = Math.min(1, Math.max(smoothstep(FOAM_DEPTH, EDGE_SOFT, depth), rippleFoam)) * 0.92;
+
+    let r = waterBaseColor[ic], g = waterBaseColor[ic + 1], b = waterBaseColor[ic + 2];
+    if (tintT > 0) { r += (WATER_SHORE_COLOR.r - r) * tintT; g += (WATER_SHORE_COLOR.g - g) * tintT; b += (WATER_SHORE_COLOR.b - b) * tintT; }
+    // Shimmer before foam, so foam stays a crisp bright line instead of being
+    // darkened by the chop riding under it.
+    const shimmer = 1 + (hA * 0.6 + hB * 0.4) * sh;
+    r *= shimmer; g *= shimmer; b *= shimmer;
+    if (foamT > 0) { r += (WATER_FOAM_COLOR.r - r) * foamT; g += (WATER_FOAM_COLOR.g - g) * foamT; b += (WATER_FOAM_COLOR.b - b) * foamT; }
+    if (r > 1) r = 1; if (g > 1) g = 1; if (b > 1) b = 1;
+    colA[ic]     = r;
+    colA[ic + 1] = g;
+    colA[ic + 2] = b;
+    colA[ic + 3] = wet;
+  }
+  waterGeo.attributes.position.needsUpdate = true;
+  waterGeo.attributes.color.needsUpdate = true;
+  // Normals EVERY frame — not just during wakes. This is what was missing:
+  // displacing vertices without recomputing normals changes no lighting at
+  // all, so the surface rendered as a flat sheet no matter how much it
+  // actually moved. Affordable now because the mesh is indexed (~6x fewer
+  // vertices than the old non-indexed expansion), and indexing is also what
+  // makes these normals smooth rather than faceted.
+  waterGeo.computeVertexNormals();
+  waterWaked = active;
+}
+
+// ── Deer AI ───────────────────────────────────────────────────────────────────
+const BOUND = WORLD - 10;       // decoupled from WORLD's scale: still reaches the outer objects (~±28) while staying inside the forest rim
+const SPEED_LAND  = 0.072;
+const SPEED_WATER = 0.048;
+// How deep the water has to be (live surface minus actual ground) before the
+// deer's feet lift off the bottom. Roughly leg-length in scale: below
+// SWIM_DEPTH_MIN it's walking on the bed regardless of what's nominally
+// "lake"; above SWIM_DEPTH_MAX it's fully afloat.
+const SWIM_DEPTH_MIN = 0.32, SWIM_DEPTH_MAX = 0.55;
+// How far the body sits into the water once fully afloat (its "draft").
+const SWIM_DRAFT = 0.28;
+let _guided = false;
+const _dir = new THREE.Vector3();
+let wanderTarget = new THREE.Vector3();
+let pauseUntil = Date.now() + 900;
+// Starts frozen (2026-07-17) — held still through the opening sky-to-ground
+// camera descent (see INTRO_MS/SKY_START_OFFSET) so the look target the
+// camera is easing toward doesn't ALSO drift from wander/AI during that
+// same window; freed the moment the descent completes. Reduced-motion skips
+// the descent and frees it immediately (see the camera-follow setup below).
+let deerFrozen = true;
+const SESSION_START = Date.now();
+// Tracks the walking→idle transition so a plain (non-guided) arrival gets a
+// beat of genuine stillness before anything — wander OR an idle action — is
+// decided. Without this, pickWanderTarget fired the instant the deer stopped
+// moving (its pauseUntil was stale from before the walk), so the "next thing"
+// happened the moment the deer's feet stopped, not after a pause. Guided
+// (click) arrivals already get their own longer settle via the _guided branch
+// below, so this only applies to autonomous wander.
+let wasWalking = false;
+const WANDER_SETTLE_MIN_MS = 700, WANDER_SETTLE_SPREAD_MS = 900;
+
+// ── Idle behaviours (graze / dance / speak) ─────────────────────────────────
+// Fired occasionally instead of moving to a new wander spot, while the deer is
+// standing still. Each drives headGroup/tailGrp/bankAngle — never touches any
+// mesh independently in a way that could separate it from what it's attached
+// to (graze/speak only ever rotate the whole rigid headGroup; dance reuses
+// the existing bank-angle quaternion path that already composes cleanly with
+// slope/heading, and bobs deerRoot's position, which moves every child with
+// it — nothing shifts relative to anything else it touches).
+const IDLE_ACTIONS = ['graze', 'dance', 'speak'];
+const DANCE_FACE_DURATION = 0.6; // turn-to-face-camera phase before the shimmy starts
+const IDLE_DURATION = { graze: 4.6, dance: 3.0 + DANCE_FACE_DURATION, speak: 2.4 };
+const deerSpeechEl = document.getElementById('deer-speech');
+let idleAction = null, idleActionStart = 0;
+// Nothing special plays until this much real time has passed since load — a
+// deer doing a goofy dance the instant the page opens reads as broken, not
+// charming; give the world a moment to feel real first.
+const IDLE_ACTION_GRACE_MS = 8000;
+// Base per-decision-point chance of playing an idle action instead of just
+// wandering on. Tuned low (not "frequent") but escalates after repeated
+// misses (idleMissStreak) so the odds of NEVER seeing one during a normal
+// visit approach zero without ever hardcoding a forced trigger at a fixed
+// time — it's still a coin flip every time, the coin just gets weighted the
+// longer it's gone unclaimed.
+const IDLE_ACTION_BASE_CHANCE = 0.15;
+const IDLE_ACTION_CHANCE_STEP = 0.12;
+const IDLE_ACTION_CHANCE_CAP = 0.85;
+let idleMissStreak = 0;
+function startIdleAction() {
+  idleAction = IDLE_ACTIONS[(Math.random() * IDLE_ACTIONS.length) | 0];
+  idleActionStart = t;
+  pauseUntil = Date.now() + IDLE_DURATION[idleAction] * 1000;
+  if (idleAction === 'speak') {
+    deerSpeechEl.textContent = 'Odeer';
+    deerSpeechEl.style.display = 'block';
+    requestAnimationFrame(() => { deerSpeechEl.style.opacity = '1'; });
+  }
+}
+function endIdleAction() {
+  if (idleAction === 'speak') {
+    deerSpeechEl.style.opacity = '0';
+    setTimeout(() => { deerSpeechEl.style.display = 'none'; }, 350);
+  }
+  idleAction = null;
+}
+
+function pickWanderTarget() {
+  if (idleAction) endIdleAction();
+  // Chance to play an idle behaviour in place instead of moving to a new spot
+  // — skipped during the spawn grace window, near a project object (avoid
+  // fighting the E-interact prompt/bump reactions), in deep water (grazing/
+  // dancing mid-swim would look wrong), and in sandbox mode.
+  const lakeInf = lakeFieldAt(deerRoot.position.x, deerRoot.position.z);
+  const idleEligible = Date.now() - SESSION_START > IDLE_ACTION_GRACE_MS
+    && !nearbyObj && !sandboxMode && lakeInf < 0.45;
+  if (idleEligible) {
+    const chance = Math.min(IDLE_ACTION_CHANCE_CAP,
+      IDLE_ACTION_BASE_CHANCE + idleMissStreak * IDLE_ACTION_CHANCE_STEP);
+    if (Math.random() < chance) {
+      idleMissStreak = 0;
+      wanderTarget.copy(deerRoot.position);
+      startIdleAction();
+      _guided = false;
+      return;
+    }
+    idleMissStreak++;
+  }
+  // Reject targets that land on/near a project object. Click-guided targets
+  // rarely land exactly inside a hard collider by chance (the user usually
+  // clicks open ground), but autonomous wander fires this repeatedly over an
+  // entire session — over enough cycles it WILL eventually roll a point
+  // inside or right against an object's hitbox (r=0.95+DEER_R=1.37), at which
+  // point `dist > 0.45` can never become false (the target itself is
+  // unreachable), so the deer just presses against the object forever. The
+  // steering-avoidance system (applyAvoidance) already bends the path around
+  // an obstacle encountered EN ROUTE — this fixes the other half: never
+  // picking a destination that's a dead end in the first place.
+  let x, z, tries = 0;
+  do {
+    x = (Math.random() * 2 - 1) * (BOUND - 0.6);
+    z = (Math.random() * 2 - 1) * (BOUND - 0.6);
+  } while (nearAnyObject(x, z, 1.6) && ++tries < 20);
+  wanderTarget.set(x, 0, z);
+  pauseUntil = Date.now() + 1200 + Math.random() * 2800;
+  _guided = false;
+}
+// Start idle at the spawn point through the load-in, then begin wandering.
+wanderTarget.set(SPAWN.x, 0, SPAWN.z);
+pauseUntil = Date.now() + 2200;
+
+const gPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+
+// Continuous mouse tracking (separate from the click-only `mouse` above) so
+// the idle deer can turn to face the cursor. A flat-plane raycast is enough
+// here — we only need a rough direction, not the exact undulating surface.
+const hoverMouse = new THREE.Vector2(-999, -999);
+let hasMouseMoved = false;
+window.addEventListener('mousemove', e => {
+  hoverMouse.x = (e.clientX / W) * 2 - 1;
+  hoverMouse.y = -(e.clientY / H) * 2 + 1;
+  hasMouseMoved = true;
+});
+const _mouseHit = new THREE.Vector3();
+const _speechPos = new THREE.Vector3(); // reused each frame for the "speak" speech-bubble position
+
+renderer.domElement.addEventListener('click', e => {
+  if (sandboxMode) { placeSandboxTile(e); return; }
+  if (deerFrozen) return;
+  mouse.x = (e.clientX / W) * 2 - 1;
+  mouse.y = -(e.clientY / H) * 2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+  // Raycast the real terrain/water surface (not a flat plane) so the deer goes
+  // exactly where the click lands visually — including onto the sunken pond.
+  let px, pz;
+  const targets = waterMesh ? [ground, waterMesh] : [ground];
+  const hits = raycaster.intersectObjects(targets, false);
+  if (hits.length) { px = hits[0].point.x; pz = hits[0].point.z; }
+  else {
+    const hit = new THREE.Vector3();
+    if (!raycaster.ray.intersectPlane(gPlane, hit)) return;
+    px = hit.x; pz = hit.z;
+  }
+  px = THREE.MathUtils.clamp(px, -BOUND, BOUND);
+  pz = THREE.MathUtils.clamp(pz, -BOUND, BOUND);
+  wanderTarget.set(px, 0, pz); pauseUntil = 0; _guided = true;
+});
+
+function toScreen(v3) {
+  const v = v3.clone().project(camera);
+  return { x: (v.x + 1) / 2 * W, y: (-(v.y - 1) / 2) * H };
+}
+
+const ePromptEl = document.getElementById('e-prompt');
+const objLabelEl = document.getElementById('obj-label');
+const interactTextEl = document.getElementById('interact-text');
+let nearbyObj = null;
+let interacting = false;
+
+function showEPrompt(obj) {
+  const s = toScreen(obj.grp.position.clone().add(new THREE.Vector3(0, 2.9, 0)));
+  ePromptEl.style.left = s.x + 'px'; ePromptEl.style.top = s.y + 'px';
+  ePromptEl.style.display = 'block';
+  const ls = toScreen(obj.grp.position.clone().add(new THREE.Vector3(0, 2.2, 0)));
+  objLabelEl.style.left = ls.x + 'px'; objLabelEl.style.top = ls.y + 'px';
+  objLabelEl.textContent = obj.label; objLabelEl.style.display = 'block';
+}
+function hideEPrompt() {
+  ePromptEl.style.display = 'none'; objLabelEl.style.display = 'none';
+}
+
+const INTERACT_RADIUS = 2.4;
+function triggerInteraction(obj) {
+  if (interacting) return;
+  interacting = true; deerFrozen = true; hideEPrompt();
+  let frame = 0;
+  const lakeInf = lakeFieldAt(deerRoot.position.x, deerRoot.position.z);
+  const swimming = lakeInf > 0.45 && !SEASON.ice;
+  const groundY = swimming ? (WATER_LEVEL - 0.30)
+                : (lakeInf > 0.45 && SEASON.ice) ? WATER_LEVEL + 0.02
+                : heightAt(deerRoot.position.x, deerRoot.position.z);
+  const bobId = setInterval(() => {
+    deerRoot.position.y = BASE_Y + groundY + Math.sin(frame * 2.8) * 0.075;
+    if (obj.reaction === 'tilt') headGroup.rotation.z = Math.sin(frame * 2.0) * 0.22;
+    if (obj.reaction === 'bow')  headGroup.rotation.x = -Math.abs(Math.sin(frame * 1.5)) * 0.40;
+    frame++;
+    if (frame > 16) {
+      clearInterval(bobId);
+      deerRoot.position.y = BASE_Y + groundY; headGroup.rotation.z = 0; headGroup.rotation.x = 0;
+    }
+  }, 65);
+  const origRY = obj.grp.rotation.y;
+  let wf = 0;
+  const wobId = setInterval(() => {
+    obj.grp.rotation.y = origRY + Math.sin(wf * 3.8) * 0.18;
+    if (obj.reaction === 'paw' && !obj.onWater) obj.grp.position.y = obj.baseY + Math.abs(Math.sin(wf * 3.0)) * 0.06;
+    wf++;
+    if (wf > 14) {
+      clearInterval(wobId);
+      obj.grp.rotation.y = origRY;
+      if (!obj.onWater) obj.grp.position.y = obj.baseY;
+    }
+  }, 65);
+  const ts = toScreen(obj.grp.position.clone().add(new THREE.Vector3(0, 3.4, 0)));
+  interactTextEl.style.left = ts.x + 'px'; interactTextEl.style.top = ts.y + 'px';
+  interactTextEl.textContent = obj.text; interactTextEl.style.opacity = '0';
+  interactTextEl.style.display = 'block';
+  requestAnimationFrame(() => { interactTextEl.style.opacity = '1'; });
+  setTimeout(() => {
+    interactTextEl.style.opacity = '0';
+    setTimeout(() => { interactTextEl.style.display = 'none'; interacting = false; deerFrozen = false; }, 420);
+  }, 3600);
+}
+
+window.addEventListener('keydown', e => {
+  if ((e.key === 'e' || e.key === 'E') && nearbyObj && !interacting && !sandboxMode) triggerInteraction(nearbyObj);
+});
+
+// ── Sandbox Mode ──────────────────────────────────────────────────────────────
+let sandboxMode = false;
+let activeTile = 'grass';
+let kbuf = '';
+const sandboxObjects = [];
+const TILES = [
+  { id: 'grass',     color: C.meadow,     hex: '#5A8038' },
+  { id: 'water',     color: C.mint,       hex: '#7A9887' },
+  { id: 'rock',      color: C.stone,      hex: '#8A8070' },
+  { id: 'flower',    color: C.rose,       hex: '#D07885' },
+  { id: 'path',      color: C.terra,      hex: '#A04038' },
+  { id: 'tree',      color: C.brown,      hex: '#5C3A1E' },
+  { id: 'stone-obj', color: C.stoneLight, hex: '#B8B0A0' },
+  { id: 'city',      color: 0x4A4A52,     hex: '#4A4A52' },
+];
+const palette = document.getElementById('sandbox-palette');
+TILES.forEach(t => {
+  const btn = document.createElement('div');
+  btn.className = 'tile-btn' + (t.id === activeTile ? ' active' : '');
+  btn.style.backgroundColor = t.hex; btn.title = t.id;
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    document.querySelectorAll('.tile-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active'); activeTile = t.id;
+  });
+  palette.appendChild(btn);
+});
+const escBtn = document.createElement('div');
+escBtn.id = 'sandbox-esc'; escBtn.textContent = 'esc to exit';
+escBtn.addEventListener('click', exitSandbox);
+palette.appendChild(escBtn);
+
+function enterSandbox() {
+  sandboxMode = true; palette.style.display = 'flex';
+  document.getElementById('hint').textContent = 'sandbox mode · click to place';
+  document.getElementById('mode-badge').textContent = 'SANDBOX';
+}
+function exitSandbox() {
+  sandboxMode = false; palette.style.display = 'none';
+  document.getElementById('hint').textContent = 'click to guide · wanders on its own';
+  document.getElementById('mode-badge').textContent = '';
+}
+function placeSandboxTile(e) {
+  mouse.x = (e.clientX / W) * 2 - 1;
+  mouse.y = -(e.clientY / H) * 2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+  const hit = new THREE.Vector3();
+  if (!raycaster.ray.intersectPlane(gPlane, hit)) return;
+  const gh = heightAt(hit.x, hit.z);
+  if (activeTile === 'tree') {
+    const g = new THREE.Group(); g.position.set(hit.x, gh, hit.z);
+    const h = 0.55 + Math.random() * 0.65;
+    dmesh(new THREE.CylinderGeometry(0.07, 0.10, h * 0.4, 5), C.brown, g).position.y = h * 0.2;
+    dmesh(new THREE.ConeGeometry(h * 0.40, h * 0.76, 6), C.meadow, g).position.y = h * 0.68;
+    scene.add(g); sandboxObjects.push(g);
+  } else if (activeTile === 'city') {
+    const g = new THREE.Group(); g.position.set(hit.x, gh, hit.z);
+    const h = 0.3 + Math.random() * 0.6, w = 0.2 + Math.random() * 0.2;
+    const b = dmesh(new THREE.BoxGeometry(w, h, w), C.stoneLight, g);
+    b.position.y = h / 2; b.rotation.y = Math.random() * 0.1;
+    scene.add(g); sandboxObjects.push(g);
+  } else if (activeTile === 'stone-obj') {
+    const s = 0.12 + Math.random() * 0.22;
+    const r = dmesh(new THREE.DodecahedronGeometry(s, 0), C.stoneLight, scene);
+    r.position.set(hit.x, gh + s * 0.5, hit.z);
+    r.rotation.set(Math.random(), Math.random() * Math.PI, Math.random());
+    sandboxObjects.push(r);
+  } else {
+    const tColor = TILES.find(t => t.id === activeTile)?.color || C.meadow;
+    const p = new THREE.Mesh(new THREE.PlaneGeometry(0.85, 0.85), mat(tColor, false));
+    p.rotation.x = -Math.PI / 2; p.position.set(hit.x, gh + 0.006, hit.z);
+    scene.add(p); sandboxObjects.push(p);
+  }
+}
+window.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && sandboxMode) { exitSandbox(); return; }
+  kbuf = (kbuf + e.key).slice(-4);
+  if (kbuf.toUpperCase() === 'DEER') { kbuf = ''; enterSandbox(); }
+});
+
+// ── Camera follow ────────────────────────────────────────────────────────────
+// Further back than before; the deer is bounded inward (BOUND) so the follow
+// camera never frames the world's edge.
+const CAM_OFFSET = new THREE.Vector3(0, 27, 20.5);   // zoomed out; still follows the deer
+// Opening shot (2026-07-17): the camera starts high above the world — well
+// past scene.fog's far distance (58), so the ground reads as a soft foggy/
+// cloud-obscured wash rather than visible terrain — at a much steeper,
+// more top-down pitch than the game's normal ~52° angle. Distance from the
+// look target is hypot(85,15)≈86, comfortably under the camera's far plane
+// (120) so nothing clips. See the intro block in animate() for the descent.
+const SKY_START_OFFSET = new THREE.Vector3(0, 85, 15);
+// The view is clamped to this square. Set a little beyond the walkable edge so
+// there's an EQUAL margin of world visible past the play area on all four sides
+// (deer never sits jammed against a screen edge). Forest extends past this to
+// WORLD and fog hides the true edge.
+const EDGE_MARGIN = 6;
+const WALK = BOUND + EDGE_MARGIN;
+
+// How far the camera's view reaches across the ground from its look target,
+// derived from the camera height/tilt/FOV/aspect. Used to clamp the follow
+// point so the frame stops exactly at the walkable edge (and holds at corners).
+let reachN = 4, reachS = 4, reachX = 4;
+function computeCamReach() {
+  const Hc = CAM_OFFSET.y, Dc = CAM_OFFSET.z;
+  const pitch = Math.atan2(Hc - 0.6, Dc);
+  const fv = THREE.MathUtils.degToRad(camera.fov) / 2;
+  const gr = a => Hc / Math.tan(Math.max(0.06, a));
+  reachN = Math.max(2, gr(pitch - fv) - Dc);   // away from camera (top of frame)
+  reachS = Math.max(2, Dc - gr(pitch + fv));   // toward camera (bottom of frame)
+  const fh = Math.atan(Math.tan(fv) * camera.aspect);
+  reachX = Math.hypot(Hc, Dc) * Math.tan(fh);  // sideways
+}
+computeCamReach();
+
+// Clamp a follow point so the visible frame stays inside [-WALK, WALK] on each
+// axis. When the view is wider than the world on an axis, centre on that axis.
+function clampFollow(v) {
+  const xMin = -WALK + reachX, xMax = WALK - reachX;
+  const zMin = -WALK + reachN, zMax = WALK - reachS;
+  v.x = xMin <= xMax ? Math.min(xMax, Math.max(xMin, v.x)) : 0;
+  v.z = zMin <= zMax ? Math.min(zMax, Math.max(zMin, v.z)) : (zMin + zMax) / 2;
+  return v;
+}
+const _camFollow = new THREE.Vector3();
+// Opening descent duration + easing. Previously 1900ms and used for a much
+// smaller adjustment (camera already started at its final position; this
+// only eased a 1.5x->1x zoom while ALSO independently chasing the deer via a
+// separate exponential lerp — two uncoordinated motions at once, which read
+// as a wobble rather than a clean move). Now the camera genuinely starts at
+// SKY_START_OFFSET and travels to CAM_OFFSET along ONE single smoothstep
+// curve (see the intro branch in animate()), with the look target and the
+// deer both held still for the duration — nothing else moves at the same
+// time, so there's exactly one motion to read. Bumped to 3400ms to give a
+// full sky-to-ground descent a deliberate, unhurried pace rather than a
+// quick zoom-settle.
+const INTRO_MS = 3400;
+const PREFERS_REDUCED_MOTION = window.matchMedia
+  && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const _introStart = performance.now();
+const camLookTarget = clampFollow(deerRoot.position.clone());
+// Reduced-motion: skip the flythrough outright — start at the normal
+// position with the deer already free to move, same as the old behavior.
+if (PREFERS_REDUCED_MOTION) {
+  camera.position.copy(camLookTarget).add(CAM_OFFSET);
+  deerFrozen = false;
+} else {
+  camera.position.copy(camLookTarget).add(SKY_START_OFFSET);
+}
+camera.lookAt(camLookTarget.x, camLookTarget.y + 0.6, camLookTarget.z);
+
+// ── Steering avoidance ───────────────────────────────────────────────────────
+// Without this, the deer walked straight at a project object's hitbox and just
+// got pushed back to the surface every frame (resolveCollisions), looking
+// stuck. This bends the desired direction around any hard collider sitting
+// ahead on the current path, so the deer visibly curves around it instead.
+const AVOID_LOOKAHEAD = 3.0;
+const AVOID_MARGIN = 0.5;
+const _toObj = new THREE.Vector3(), _avoid = new THREE.Vector3();
+function applyAvoidance(dirNorm) {
+  _avoid.set(0, 0, 0);
+  for (let i = 0; i < COLLIDERS.length; i++) {
+    const c = COLLIDERS[i];
+    _toObj.set(c.x - deerRoot.position.x, 0, c.z - deerRoot.position.z);
+    const dist = _toObj.length();
+    if (dist < 1e-4 || dist > AVOID_LOOKAHEAD) continue;
+    const ahead = _toObj.dot(dirNorm);
+    if (ahead <= 0) continue; // obstacle is behind — ignore
+    const perpDist = Math.sqrt(Math.max(0, dist * dist - ahead * ahead));
+    const clearance = c.r + DEER_R + AVOID_MARGIN;
+    if (perpDist >= clearance) continue;
+    // Perpendicular to travel direction; steer to whichever side the
+    // obstacle is NOT on.
+    const perpX = -dirNorm.z, perpZ = dirNorm.x;
+    const side = (perpX * _toObj.x + perpZ * _toObj.z) > 0 ? -1 : 1;
+    const strength = (1 - ahead / AVOID_LOOKAHEAD) * (1 - perpDist / clearance);
+    _avoid.x += perpX * side * strength;
+    _avoid.z += perpZ * side * strength;
+  }
+  if (_avoid.x !== 0 || _avoid.z !== 0) {
+    dirNorm.x += _avoid.x * 1.6;
+    dirNorm.z += _avoid.z * 1.6;
+    dirNorm.normalize();
+  }
+  return dirNorm;
+}
+
+// ── Collision resolve ────────────────────────────────────────────────────────
+function resolveCollisions(pos) {
+  for (let i = 0; i < COLLIDERS.length; i++) {
+    const c = COLLIDERS[i];
+    const dx = pos.x - c.x, dz = pos.z - c.z;
+    const rr = c.r + DEER_R;
+    const d2 = dx * dx + dz * dz;
+    if (d2 < rr * rr && d2 > 1e-6) {
+      const d = Math.sqrt(d2);
+      pos.x = c.x + (dx / d) * rr;
+      pos.z = c.z + (dz / d) * rr;
+    }
+  }
+}
+
+// Soft trees: nudge each nearby trunk away from the deer (and lean it), then
+// spring it back to rest — the deer parts the trees instead of being stopped.
+// With ~1500 trees scattered across the world, scanning all of them every
+// frame just to find the handful near the deer was wasted work. updateTrees
+// instead looks up the deer's cell + its 8 neighbors in treeGrid (declared
+// near COLLIDERS/TREES, populated once after scatter — see below).
+const TREE_PUSH_R = 1.0, TREE_PUSH_MAX = 0.16;   // gentle nudge, not a big shove
+// Trees currently mid-push/mid-spring-back — tracked separately so one still
+// settles back to rest even after the deer has moved out of its grid cell.
+const activeTrees = new Set();
+
+// Rotation is split into two additive terms so the deer-push lean and the
+// ambient wind sway (updateTreeWind, below) never clobber each other: push
+// writes tr.pushRotZ/pushRotX (and tr.ox/oz) here; updateTreeWind reads them
+// back, adds its own sway term, and writes the actual instance matrix every
+// frame — these two functions only touch plain data, not the GPU-facing mesh.
+function settleTree(tr) {
+  tr.ox = 0; tr.oz = 0;
+  tr.pushRotZ = 0; tr.pushRotX = 0;
+  activeTrees.delete(tr);
+}
+function stepTree(tr, dx, dz) {
+  const ax = tr.bx - dx, az = tr.bz - dz;
+  const d2 = ax * ax + az * az;
+  let tx = 0, tz = 0;
+  if (d2 < TREE_PUSH_R * TREE_PUSH_R && d2 > 1e-6) {
+    const d = Math.sqrt(d2);
+    const push = (1 - d / TREE_PUSH_R) * TREE_PUSH_MAX;
+    tx = (ax / d) * push; tz = (az / d) * push;
+    activeTrees.add(tr);
+  } else if (Math.abs(tr.ox) < 0.002 && Math.abs(tr.oz) < 0.002) {
+    settleTree(tr);
+    return;
+  }
+  tr.ox += (tx - tr.ox) * frameEase(0.18);
+  tr.oz += (tz - tr.oz) * frameEase(0.18);
+  tr.pushRotZ = -tr.ox * 0.35;
+  tr.pushRotX =  tr.oz * 0.35;
+}
+function updateTrees(dx, dz) {
+  const cx = Math.floor(dx / TREE_CELL), cz = Math.floor(dz / TREE_CELL);
+  for (let gx = cx - 1; gx <= cx + 1; gx++) {
+    for (let gz = cz - 1; gz <= cz + 1; gz++) {
+      const bucket = treeGrid.get(gx + ',' + gz);
+      if (!bucket) continue;
+      for (let i = 0; i < bucket.length; i++) stepTree(bucket[i], dx, dz);
+    }
+  }
+  // Any tree still springing back but outside the deer's current 3×3 window
+  // (deer moved away quickly) needs a step too, or it'd get stranded mid-lean.
+  for (const tr of activeTrees) {
+    const tcx = Math.floor(tr.bx / TREE_CELL), tcz = Math.floor(tr.bz / TREE_CELL);
+    if (tcx >= cx - 1 && tcx <= cx + 1 && tcz >= cz - 1 && tcz <= cz + 1) continue; // already stepped above
+    stepTree(tr, dx, dz);
+  }
+}
+
+// ── Wind sway (trees + bushes) ───────────────────────────────────────────────
+// Unlike the deer-push system above, wind has to touch EVERY scattered plant
+// every frame (there's no "near the deer" shortcut — the whole forest is
+// windblown at once). That's still cheap: no vertex/geometry work, just a sin
+// + a couple of multiplies and a Group.rotation write per plant, nowhere near
+// the cost of the per-vertex water pass. A slow perlin-noise gust envelope
+// (time as one axis of the existing 2D noise) makes the wind breathe between
+// calm and gust instead of swaying at a flat, obviously-looping rate. The sway
+// phase is a TRAVELING wave along the wind direction (time term minus a
+// position term dotted with wind direction), so gusts visibly sweep across the
+// forest in the direction the wind blows, rather than every plant swaying in
+// unison — that's the difference between convincing wind and an obvious loop.
+const WIND_TEMPO = 1.6;      // base oscillation rate
+const WIND_TRAVEL_K = 0.28;  // spatial frequency of the gust wave across the world
+const WIND_SWAY_BASE = 0.075; // rad, before per-species flex + gust envelope
+function windGustEnvelope() {
+  // perlin2's second axis is a fixed offset — not spatial, just a second noise
+  // stream — so this is pure temporal turbulence, no relation to world position.
+  const n = perlin2(t * 0.10, 41.0); // ~[-1.4, 1.4]
+  return 1 + WIND_GUST * n * 0.6;    // breathes around 1, scaled by season gustiness
+}
+// This is also where the deer-push position/rotation (tr.ox/oz/pushRotZ/
+// pushRotX, updated by stepTree/settleTree above, which run earlier in the
+// frame via updateTrees) actually reaches the mesh — since wind already has
+// to touch every tree every frame, it's the natural single place to compose
+// the full instance matrix (position + push+wind rotation + per-tree scale)
+// and write it, rather than doing a second full pass.
+const _windDummy = new THREE.Object3D();
+function updateTreeWind(gustEnv) {
+  const amp0 = WIND_SPEED * gustEnv * WIND_SWAY_BASE * (SEASON.bare ? 1.15 : 1); // bare branches whip more per unit wind
+  for (let i = 0; i < TREES.length; i++) {
+    const tr = TREES[i];
+    const phase = t * WIND_TEMPO - (tr.bx * WIND_DIR_X + tr.bz * WIND_DIR_Z) * WIND_TRAVEL_K + tr.windSeed;
+    const sway = Math.sin(phase) * amp0 * tr.flex;
+    const rotZ = tr.pushRotZ - WIND_DIR_X * sway;
+    const rotX = tr.pushRotX + WIND_DIR_Z * sway;
+    _windDummy.position.set(tr.bx + tr.ox, tr.baseY, tr.bz + tr.oz);
+    _windDummy.rotation.set(rotX, 0, rotZ);
+    _windDummy.scale.setScalar(tr.scale);
+    _windDummy.updateMatrix();
+    tr.mesh.setMatrixAt(tr.idx, _windDummy.matrix);
+  }
+  for (let i = 0; i < TREE_INSTANCED_MESHES.length; i++) {
+    TREE_INSTANCED_MESHES[i].instanceMatrix.needsUpdate = true;
+  }
+}
+function updateBushWind(gustEnv) {
+  const amp0 = WIND_SPEED * gustEnv * WIND_SWAY_BASE * (SEASON.bare ? 1.15 : 1);
+  for (let i = 0; i < BUSHES.length; i++) {
+    const b = BUSHES[i];
+    const phase = t * WIND_TEMPO - (b.bx * WIND_DIR_X + b.bz * WIND_DIR_Z) * WIND_TRAVEL_K + b.windSeed;
+    const sway = Math.sin(phase) * amp0 * b.flex;
+    b.g.rotation.z = -WIND_DIR_X * sway;
+    b.g.rotation.x =  WIND_DIR_Z * sway;
+  }
+}
+
+// ── Slope-aligned orientation ────────────────────────────────────────────────
+// The deer used to stay perfectly flat, so it clipped into (or floated above)
+// steep inclines. It now tilts to stand perpendicular to the local ground
+// normal, combined with heading + the small gait "bank" via quaternions (so
+// none of the three clobbers the others the way stacking raw Euler writes
+// would). Skipped while swimming/on-ice, since the visible surface there is
+// flat regardless of the sunken lakebed underneath.
+const SLOPE_SAMPLE = 0.45;
+const UP = new THREE.Vector3(0, 1, 0);
+const BANK_AXIS = new THREE.Vector3(0, 0, 1);
+// For slope sampling only: ease each point's height toward the water's flat
+// visible surface (WATER_LEVEL) as lake influence rises, instead of using the
+// true sunken basin floor beneath it. Two things were tried and rejected first:
+// (1) a hard on/off cutoff just moved the cliff to sit exactly at the cutoff
+// (raw tilt got WORSE: 53.8° → 59.4° at the same spot); (2) blending
+// heightAt()'s result (which already dips toward BASIN_FLOOR internally)
+// toward WATER_LEVEL was still steep, because that's a compounded round trip
+// through the deep basin value before coming back up. This version blends the
+// LAND-ONLY height (landHeightAt, ignoring the lake dip entirely) straight to
+// WATER_LEVEL — the shortest path, never referencing the sunken lakebed depth
+// at all — matching what's actually on screen (a shore easing into flat water).
+function landHeightAt(x, z) {
+  let h = fbm(x, z) * 0.22;
+  const dCenter = Math.hypot(x - LAKE_CX, z - LAKE_CZ);
+  h += smoothstep(BOWL_INNER, BOWL_OUTER, dCenter) * BOWL_AMP;
+  const b = beachInfluence(x, z);
+  if (b > 0) h = h * (1 - b * 0.9) + (WATER_LEVEL + 0.05) * (b * 0.9);
+  for (let i = 0; i < OBJS.length; i++) {
+    if (OBJS[i].onWater) continue;
+    const dx = x - OBJS[i].pos[0], dz = z - OBJS[i].pos[1];
+    h += 0.5 * Math.exp(-(dx * dx + dz * dz) / (2 * 1.35 * 1.35));
+  }
+  return h;
+}
+function visibleSurfaceHeightAt(x, z, li) {
+  if (li === undefined) li = lakeFieldAt(x, z);
+  return li <= 0 ? landHeightAt(x, z) : landHeightAt(x, z) * (1 - li) + WATER_LEVEL * li;
+}
+const _tx = new THREE.Vector3(), _tz = new THREE.Vector3(), _normal = new THREE.Vector3();
+// li = the deer's own already-computed lakeFieldAt value (passed by the
+// caller). Solidly inland (li < 0.05), skip the lake-field lookup on all 4
+// samples entirely — each one costs a 7-blob loop + several noise calls, and
+// at SLOPE_SAMPLE's tiny offset (0.45u) dry land here means the neighbors are
+// dry too, except right at the shore band. That band is already routed to the
+// flat-surface branch above lakeInf 0.30 by the caller, so this fast path
+// only ever applies where the full lake-aware height genuinely isn't needed.
+function groundNormalAt(x, z, li) {
+  if (li !== undefined && li < 0.05) {
+    const hL = landHeightAt(x - SLOPE_SAMPLE, z), hR = landHeightAt(x + SLOPE_SAMPLE, z);
+    const hF = landHeightAt(x, z - SLOPE_SAMPLE), hB = landHeightAt(x, z + SLOPE_SAMPLE);
+    _tx.set(2 * SLOPE_SAMPLE, hR - hL, 0);
+    _tz.set(0, hB - hF, 2 * SLOPE_SAMPLE);
+    return _normal.copy(_tz).cross(_tx).normalize();
+  }
+  const hL = visibleSurfaceHeightAt(x - SLOPE_SAMPLE, z), hR = visibleSurfaceHeightAt(x + SLOPE_SAMPLE, z);
+  const hF = visibleSurfaceHeightAt(x, z - SLOPE_SAMPLE), hB = visibleSurfaceHeightAt(x, z + SLOPE_SAMPLE);
+  _tx.set(2 * SLOPE_SAMPLE, hR - hL, 0);
+  _tz.set(0, hB - hF, 2 * SLOPE_SAMPLE);
+  return _normal.copy(_tz).cross(_tx).normalize();
+}
+// Kept as a safety net for any other steep spot (e.g. an object knoll edge)
+// that isn't lake-related — the visible-surface fix above handles the
+// shoreline case at the source, this just guards against anything else.
+const MAX_TILT = 0.40; // ~23°
+const _qIdentity = new THREE.Quaternion();
+function clampTiltAngle(q) {
+  const angle = 2 * Math.acos(THREE.MathUtils.clamp(q.w, -1, 1));
+  if (angle > MAX_TILT) q.slerp(_qIdentity, 1 - MAX_TILT / angle);
+  return q;
+}
+const _qYaw = new THREE.Quaternion(), _qTilt = new THREE.Quaternion(),
+      _qBank = new THREE.Quaternion(), _qOrient = new THREE.Quaternion();
+function updateDeerOrientation(x, z, heading, bank, flatSurface, li) {
+  const n = flatSurface ? UP : groundNormalAt(x, z, li);
+  _qYaw.setFromAxisAngle(UP, heading);
+  _qTilt.setFromUnitVectors(UP, n);
+  clampTiltAngle(_qTilt);
+  _qBank.setFromAxisAngle(BANK_AXIS, bank);
+  _qOrient.copy(_qTilt).multiply(_qYaw).multiply(_qBank);
+  deerRoot.quaternion.slerp(_qOrient, frameEase(0.22));
+}
+
+// ── Animation Loop ────────────────────────────────────────────────────────────
+// FRAMERATE INDEPENDENCE (2026-07-16, added when instancing trees changed the
+// framerate): every per-frame constant in this file (t's increment, deer
+// speed, turn/camera/orientation eases, "return to rest" decays, wake timer,
+// etc.) was originally a bare fixed step applied once per requestAnimationFrame
+// tick — i.e. the whole simulation's PACE was implicitly tied to whatever FPS
+// the scene happened to render at. That was invisible while the scene was
+// heavy enough to sit around ~60fps on its own, but cutting the draw-call
+// count (see the "Instanced trees" section) let the framerate climb, and
+// since every constant still fires once per tick regardless of how much real
+// time that tick took, more frames/sec == the whole world visibly speeding up
+// (wind, walking, wander pace all sped up together — same root cause, one fix).
+// dtScale = (real elapsed seconds since last frame) / (1/60) — exactly 1.0 at
+// the 60fps this file's constants were tuned for (the water code's hardcoded
+// `0.016` elsewhere was the tell), less than 1 if slower, more if faster.
+// Direct per-frame ADDITIONS (t, deer movement, wakeTimer, crownObj spin) are
+// scaled by dtScale directly. Per-frame "ease toward a target" blends
+// (`x += (target-x)*k`, `.lerp(target,k)`, `.slerp(target,k)`) are NOT
+// linearly scaled by dtScale — that overshoots/undershoots at anything but
+// exactly 1x — they go through frameEase(k), the correct exponential-decay
+// generalization (1 - (1-k)^dtScale), which converges to the same real-time
+// rate at any framerate. "Return to rest" decays (`x *= 0.85`) use the same
+// math directly as `x *= Math.pow(0.85, dtScale)`.
+let dtScale = 1;
+function frameEase(k) { return 1 - Math.pow(1 - k, dtScale); }
+let _lastFrameTime = performance.now();
+
+function wrapAngle(a) {
+  while (a >  Math.PI) a -= 2 * Math.PI;
+  while (a < -Math.PI) a += 2 * Math.PI;
+  return a;
+}
+
+let t = 0;
+let walking = false;
+let headingAngle = 0, bankAngle = 0;
+// Head-leads-body turning (2026-07-16): headingAngleFast is where the HEAD
+// wants to point — eases toward the target fast (HEAD_LEAD_EASE). headingAngle
+// (the BODY's yaw, drives deerRoot's own orientation via updateDeerOrientation)
+// now chases headingAngleFast instead of the raw target directly, at its
+// existing slower rate — so the head visibly gets there first and the body
+// catches up, rather than the whole deer snapping to face a new direction as
+// one rigid unit. headYawOffset (their wrapped difference, clamped to a
+// natural neck-twist range) is what actually gets applied to headGroup's
+// local yaw in the walking/swimming gait block below.
+let headingAngleFast = 0;
+const HEAD_LEAD_EASE = 0.32;
+const MAX_HEAD_YAW = 0.6; // ~34°
+
+let _ddwPaused = false;   // embed mode: parent pauses the loop while the hero is off-screen (declared before animate() first runs — TDZ-safe)
+// Belt-and-suspenders alongside _ddwPaused: pause when the BROWSER TAB itself
+// is backgrounded (separate from the hero being scrolled off-page within the
+// site, which _ddwPaused already covers via the parent's IntersectionObserver).
+// Browsers already throttle rAF in hidden tabs on their own, but explicitly
+// halting the loop (rather than relying on that alone) guarantees zero wasted
+// work and — combined with animate()'s existing dt clamp — avoids a large
+// catch-up jump on the frame the tab becomes visible again.
+let _tabHidden = false;
+// _animateRunning tracks whether a requestAnimationFrame(animate) chain is
+// currently scheduled. Two independent pause flags (_ddwPaused, _tabHidden)
+// each used to have their OWN narrow "resume" trigger (a transition on THAT
+// flag only) — a real bug: if _tabHidden flipped true while _ddwPaused was
+// already false, NEITHER resume path could restart the loop (the pause
+// message's resume only fires if _ddwPaused was true; the visibilitychange
+// resume only fires on a hidden-true-to-false transition of ITS OWN flag),
+// permanently freezing the scene with no recovery. Fixed by routing every
+// resume signal through one shared check of the FULL combined condition.
+let _animateRunning = false;
+function _maybeResume() {
+  if (_animateRunning || _ddwPaused || _tabHidden) return;   // still legitimately paused, or already looping
+  _lastFrameTime = performance.now();   // reset the clock so the dt-clamp doesn't compress the pause into one jump-cut frame
+  animate();
+}
+document.addEventListener('visibilitychange', () => {
+  _tabHidden = document.hidden;
+  if (!_tabHidden) _maybeResume();
+});
+function animate() {
+  if (_ddwPaused || _tabHidden) { _animateRunning = false; return; }   // loop halts; _maybeResume() re-invokes animate() to restart it
+  _animateRunning = true;
+  requestAnimationFrame(animate);
+  const _now = performance.now();
+  // Clamp so a tab-switch/stall (rAF pauses when backgrounded) doesn't cause
+  // a single huge catch-up jump on the next visible frame.
+  const dt = Math.min((_now - _lastFrameTime) / 1000, 0.1);
+  _lastFrameTime = _now;
+  dtScale = dt * 60;
+  t += 0.044 * dtScale;
+
+  // Moved up from later in this function (was computed right before
+  // updateWaterWake) — the deer's own water-contact/float logic below now
+  // needs it too, to read the water's live surface height at its position.
+  // Wind keeps blowing regardless of deerFrozen (interactions pause the
+  // deer, not the weather).
+  const _gustEnv = windGustEnvelope();
+
+  let swimming = false;
+  if (!deerFrozen) {
+    const pos = deerRoot.position;
+    _dir.set(wanderTarget.x - pos.x, 0, wanderTarget.z - pos.z);
+    const dist = _dir.length();
+    walking = dist > 0.45;
+    if (wasWalking && !walking && !_guided) {
+      // Just arrived at a plain wander spot — stand still for a short beat
+      // with nothing special happening before the next decision (wander
+      // again, or maybe an idle action) gets made.
+      pauseUntil = Date.now() + WANDER_SETTLE_MIN_MS + Math.random() * WANDER_SETTLE_SPREAD_MS;
+    }
+    wasWalking = walking;
+
+    const lakeInf = lakeFieldAt(pos.x, pos.z);
+    // "Is the deer in water" is now answered from REAL depth — the water's
+    // own live surface height (same function the lake mesh itself renders
+    // from) minus the actual ground height at the deer's feet — instead of
+    // the abstract lakeInf field. This is the literal rule Morris asked for:
+    // if the feet are at or above the water's current surface, they're
+    // touching ground, so it's walking, full stop, regardless of what the
+    // lake-influence field nominally says about the area. `bedH`/`swimDepth`
+    // are reused below for the Y-position blend and the wake-spawn gate, so
+    // "in water" is answered exactly once per frame, not three different
+    // ways in three different places.
+    const bedH = heightAt(pos.x, pos.z);
+    const liveWaterH = SEASON.ice ? WATER_LEVEL : waterSurfaceHeightAt(pos.x, pos.z, _gustEnv);
+    const swimDepth = liveWaterH - bedH;
+    // Below SWIM_DEPTH_MIN: feet flat on the bottom, walking. Above
+    // SWIM_DEPTH_MAX: fully afloat, feet can't reach. Between: eases from one
+    // to the other rather than snapping, so a gently-shelving entry doesn't
+    // pop the gait.
+    const floatAmt = SEASON.ice ? 0 : smoothstep(SWIM_DEPTH_MIN, SWIM_DEPTH_MAX, swimDepth);
+    swimming = floatAmt > 0.5;
+    const speed = swimming ? SPEED_WATER : SPEED_LAND;
+
+    if (walking) {
+      // A click mid-idle-action (e.g. mid-"speak") redirects the deer without
+      // going through pickWanderTarget — drop the action immediately so it
+      // doesn't keep "talking"/grazing while walking away.
+      if (idleAction) endIdleAction();
+      _dir.normalize();
+      applyAvoidance(_dir);
+      pos.x += _dir.x * speed * dtScale;
+      pos.z += _dir.z * speed * dtScale;
+      const ta = Math.atan2(-_dir.x, -_dir.z);
+      headingAngleFast += wrapAngle(ta - headingAngleFast) * frameEase(HEAD_LEAD_EASE);
+      headingAngle += wrapAngle(headingAngleFast - headingAngle) * frameEase(0.14);
+    } else if (_guided) {
+      _guided = false;
+      pauseUntil = Date.now() + 5000 + Math.random() * 3000;
+    } else {
+      if (Date.now() > pauseUntil) pickWanderTarget();
+    }
+    if (!walking) {
+      // Not actively steering toward anything — let any head-lead relax back
+      // to neutral so it doesn't carry a stale offset into the next walk.
+      headingAngleFast += wrapAngle(headingAngle - headingAngleFast) * frameEase(0.12);
+    }
+
+    // Idle (not walking): turn to face the mouse cursor's ground position — a
+    // gentler ease than the walking turn, so it reads as "noticing you" rather
+    // than snapping around. Skipped while an idle action owns the head.
+    // Disabled for now (MOUSE_LOOK_ENABLED, near the top of the script) —
+    // flip that one flag to bring it back.
+    if (MOUSE_LOOK_ENABLED && !walking && !idleAction && hasMouseMoved && !sandboxMode) {
+      raycaster.setFromCamera(hoverMouse, camera);
+      if (raycaster.ray.intersectPlane(gPlane, _mouseHit)) {
+        const mx = _mouseHit.x - pos.x, mz = _mouseHit.z - pos.z;
+        if (mx * mx + mz * mz > 0.0225) { // ignore when the cursor is basically on top of the deer
+          const ta = Math.atan2(-mx, -mz);
+          headingAngle += wrapAngle(ta - headingAngle) * frameEase(0.10);
+        }
+      }
+    }
+
+    resolveCollisions(pos);
+    updateTrees(pos.x, pos.z);
+
+    if (lakeInf > 0.45 && SEASON.ice) {
+      deerRoot.position.y = BASE_Y + WATER_LEVEL + 0.02;   // stand on the ice
+    } else {
+      // Ground contact: ride the VISIBLE surface — land height easing to the
+      // flat waterline — NEVER the raw heightAt, which dips toward the sunken
+      // basin floor well before the swim threshold. That dip is what made the
+      // deer walk down the invisible underwater slope near shore and clip
+      // through the ground/water. Unchanged from before; still used whenever
+      // floatAmt < 1, i.e. feet are at least partly on the bottom.
+      const groundY = visibleSurfaceHeightAt(pos.x, pos.z, lakeInf);
+      // Afloat: ride the water's own LIVE surface height, the same one the
+      // lake mesh itself renders from (swell + ambient chop, in real time) —
+      // this is what makes the deer genuinely wobble with the water instead
+      // of a disconnected fixed-frequency bob layered on top. SWIM_DRAFT is
+      // how deep the body sits into the surface once fully afloat.
+      const floatY = liveWaterH - SWIM_DRAFT;
+      deerRoot.position.y = BASE_Y + groundY + (floatY - groundY) * floatAmt;
+    }
+
+    // How far the head currently leads the body (clamped to a natural
+    // neck-twist range) — applied as the head's LOCAL yaw below, on top of
+    // whatever else headGroup.rotation.y is doing (gait bob / idle scan).
+    const headYawOffset = THREE.MathUtils.clamp(
+      wrapAngle(headingAngleFast - headingAngle), -MAX_HEAD_YAW, MAX_HEAD_YAW);
+    if (swimming) {
+      legGroups.forEach(hip => { hip.rotation.x = Math.sin(t * 8.8 + hip.userData.phase) * 0.30; });
+      bankAngle = Math.sin(t * 4.4) * 0.045;
+      headGroup.rotation.x = -0.12 + Math.sin(t * 3.0) * 0.05;
+      headGroup.rotation.y += (headYawOffset - headGroup.rotation.y) * frameEase(0.30);
+    } else if (walking) {
+      legGroups.forEach(hip => { hip.rotation.x = Math.sin(t * 6.5 + hip.userData.phase) * 0.62; });
+      bankAngle = Math.sin(t * 6.5) * 0.055;
+      headGroup.rotation.x = Math.sin(t * 6.5) * 0.07;
+      headGroup.rotation.y += (headYawOffset - headGroup.rotation.y) * frameEase(0.30);
+    } else {
+      legGroups.forEach(hip => { hip.rotation.x *= Math.pow(0.85, dtScale); });
+      bankAngle *= Math.pow(0.85, dtScale);
+      headGroup.rotation.x *= Math.pow(0.85, dtScale);
+      headGroup.rotation.y = Math.sin(t * 0.75) * 0.14;
+    }
+
+    // Idle-action pose overrides (graze/dance/speak), layered on top of the
+    // plain idle settle just above — only while genuinely standing still.
+    // Every override rotates headGroup as ONE rigid unit (never skull/snout/
+    // eyes/ears/antlers independently) and reuses the existing bankAngle →
+    // updateDeerOrientation quaternion path for any body lean, so nothing can
+    // visibly separate from anything it's attached to.
+    if (!walking && idleAction) {
+      const at = t - idleActionStart;
+      if (idleAction === 'graze') {
+        // Ease the head DOWN to grazing height, then hold with a small
+        // chewing wobble on top. Negative rotation.x is "down" on this head
+        // group — same sign the 'bow' interaction reaction already uses —
+        // a positive value here was the bug: it tilted the head UP instead.
+        const down = -Math.min(1, at / 1.1) * 0.85;
+        const chew = at > 1.1 ? Math.sin(at * 7.0) * 0.05 : 0;
+        headGroup.rotation.x = down + chew;
+        headGroup.rotation.y *= Math.pow(0.85, dtScale);
+      } else if (idleAction === 'dance') {
+        if (at < DANCE_FACE_DURATION) {
+          // Turn to face the camera/player first — same easing shape as the
+          // walking-turn/mouse-look code elsewhere in this file.
+          const dx = camera.position.x - pos.x, dz = camera.position.z - pos.z;
+          const ta = Math.atan2(-dx, -dz);
+          headingAngle += wrapAngle(ta - headingAngle) * frameEase(0.18);
+        } else {
+          // A goofy shimmy: big side-to-side bank (same quaternion path as
+          // the walking gait's bank, so it stays slope-aligned) + a bouncy
+          // hop + a head bob, all off one shared clock so it reads as one
+          // motion. `dt` restarts at 0 once the facing turn above is done.
+          const dt = at - DANCE_FACE_DURATION;
+          bankAngle = Math.sin(dt * 9.5) * 0.34;
+          headGroup.rotation.x = Math.sin(dt * 9.5 + 0.4) * 0.16;
+          headGroup.rotation.y = Math.sin(dt * 5.0) * 0.22;
+          deerRoot.position.y += Math.abs(Math.sin(dt * 9.0)) * 0.14;
+          legGroups.forEach(hip => { hip.rotation.x = Math.sin(dt * 9.5 + hip.userData.phase) * 0.35; });
+        }
+      } else if (idleAction === 'speak') {
+        // A small nod while "talking."
+        headGroup.rotation.x = Math.sin(at * 3.0) * 0.10;
+        headGroup.rotation.y = Math.sin(at * 1.6) * 0.08;
+      }
+    }
+
+    // Tilt to stand perpendicular to the ground — but treat the whole near-water
+    // band as flat (lakeInf > 0.30), since the deer is riding the flat waterline
+    // there, not the steep sunken shore. This is the same threshold the water
+    // mesh uses for its shoreline, so tilt and position agree.
+    updateDeerOrientation(pos.x, pos.z, headingAngle, bankAngle, lakeInf > 0.30, lakeInf);
+
+    // Wake rings whenever it's MOVING through unfrozen water — shallow wading
+    // included, gated on the same real-depth check (CONTACT_DEPTH_MIN) the
+    // contact outline uses, via the `swimDepth` already computed above. Any
+    // depth that shows a waterline is also a depth at which walking disturbs
+    // the surface — not full swim depth only, which left a wading deer
+    // showing a waterline while disturbing nothing.
+    if (walking && !SEASON.ice && swimDepth > CONTACT_DEPTH_MIN) {
+      wakeTimer += 0.044 * dtScale;
+      if (wakeTimer > 0.20) { wakeTimer = 0; spawnWake(pos.x, pos.z); } // sparser trail — less crowded, calmer
+    }
+  }
+
+  // _gustEnv computed at the top of this function now — shared by the deer's
+  // own water logic above as well as trees/bushes/water below.
+  updateTreeWind(_gustEnv);
+  updateBushWind(_gustEnv);
+
+  // Real elapsed seconds (not dtScale) — updateWaterWake ages wake ripples in
+  // actual seconds (`s.age += dt`, compared against a 1.4s lifetime).
+  updateWaterWake(dt, deerRoot.position.x, deerRoot.position.z, _gustEnv);
+
+  if (crownObj) {
+    crownObj.grp.position.y = WATER_LEVEL + 0.30 + Math.sin(t * 1.4) * 0.04; // ride on top
+    crownObj.grp.rotation.y += 0.004 * dtScale;
+  }
+
+  // Side-to-side wag, pivoting at the body attachment — faster/bigger mid-dance
+  // (but not yet during the facing turn that leads into it).
+  const dancing = idleAction === 'dance' && (t - idleActionStart) >= DANCE_FACE_DURATION;
+  tailGrp.rotation.y = dancing
+    ? Math.sin(t * 9.0) * 0.55
+    : Math.sin(t * 5.0) * 0.30;
+
+  nearbyObj = null;
+  if (!interacting && !sandboxMode) {
+    let minDist = Infinity;
+    projectObjects.forEach(obj => {
+      const d = deerRoot.position.distanceTo(obj.grp.position);
+      if (d < INTERACT_RADIUS && d < minDist) { minDist = d; nearbyObj = obj; }
+    });
+    if (nearbyObj) showEPrompt(nearbyObj); else hideEPrompt();
+  }
+
+  if (idleAction === 'speak') {
+    headGroup.getWorldPosition(_speechPos);
+    _speechPos.y += 0.55;
+    const sp = toScreen(_speechPos);
+    deerSpeechEl.style.left = sp.x + 'px'; deerSpeechEl.style.top = sp.y + 'px';
+  }
+
+  // Opening descent: ONE motion at a time. While it's running, camLookTarget
+  // is not touched (still exactly where clampFollow set it at load) and the
+  // deer is frozen (see deerFrozen's declaration), so the only thing moving
+  // is the camera itself, along a single smoothstep from SKY_START_OFFSET to
+  // CAM_OFFSET — no competing lerp/zoom/follow systems fighting each other,
+  // which is what the old version's wobble actually was.
+  const introK = PREFERS_REDUCED_MOTION ? 1 : Math.min(1, (performance.now() - _introStart) / INTRO_MS);
+  if (introK < 1) {
+    const es = introK * introK * (3 - 2 * introK);   // smoothstep
+    camera.position.set(
+      camLookTarget.x + THREE.MathUtils.lerp(SKY_START_OFFSET.x, CAM_OFFSET.x, es),
+      camLookTarget.y + THREE.MathUtils.lerp(SKY_START_OFFSET.y, CAM_OFFSET.y, es),
+      camLookTarget.z + THREE.MathUtils.lerp(SKY_START_OFFSET.z, CAM_OFFSET.z, es));
+    camera.lookAt(camLookTarget.x, camLookTarget.y + 0.6, camLookTarget.z);
+  } else {
+    if (deerFrozen) deerFrozen = false;   // descent just completed this frame — release the deer
+    // Edge-clamped follow: the camera tracks a clamped version of the deer's
+    // position so the frame never passes the walkable edge; when the deer
+    // reaches an edge/corner the camera holds there and the deer moves
+    // within the frame, resuming follow when it heads back inward.
+    _camFollow.set(deerRoot.position.x, deerRoot.position.y, deerRoot.position.z);
+    clampFollow(_camFollow);
+    camLookTarget.lerp(_camFollow, frameEase(0.08));
+    const desiredCamPos = new THREE.Vector3(
+      camLookTarget.x + CAM_OFFSET.x,
+      camLookTarget.y + CAM_OFFSET.y,
+      camLookTarget.z + CAM_OFFSET.z);
+    camera.position.lerp(desiredCamPos, frameEase(0.06));
+    camera.lookAt(camLookTarget.x, camLookTarget.y + 0.6, camLookTarget.z);
+  }
+
+  renderer.render(scene, camera);
+}
+animate();
+window.__DEBUG_HOOK__ = { deerRoot, wanderTarget, camLookTarget };
+
+window.addEventListener('resize', () => {
+  W = window.innerWidth; H = window.innerHeight;
+  camera.aspect = W / H; camera.updateProjectionMatrix();
+  renderer.setSize(W, H);
+  computeCamReach();   // view extents depend on aspect
+});
+
+// ── EMBED BRIDGE (portfolio hero integration) ──
+// Active ONLY under ?embed=1, i.e. when this file is loaded inside the
+// portfolio's hero iframe. The standalone dogdeer-world.html is untouched.
+// Talks to the parent portfolio via postMessage: announces the season, forwards
+// the pointer (the iframe otherwise swallows the parent's mousemove so its
+// cursor can't track over the world), pulses "guide" on interaction, and
+// accepts pause/resume so the world's render loop yields to the parent's
+// GSAP/ScrollTrigger index while the hero is scrolled off-screen.
+if (new URLSearchParams(location.search).has('embed')) {
+  const _post = (msg) => { try { parent.postMessage(msg, '*'); } catch (e) {} };
+  document.documentElement.style.cursor = 'none';   // the parent renders the unified cursor over the iframe
+  const _ef = document.getElementById('edge-fog'); if (_ef) _ef.style.display = 'none';   // vignette off in the portfolio hero (Morris, 2026-07-17)
+  const _announceSeason = () => _post({ type: 'ddw:season', name: SEASON.name });
+  _announceSeason();
+  window.addEventListener('message', (e) => {
+    const d = e.data;
+    if (!d || typeof d.type !== 'string') return;
+    if (d.type === 'ddw:hello') _announceSeason();                          // parent attached its listener late — resend
+    else if (d.type === 'ddw:pause') _ddwPaused = true;
+    else if (d.type === 'ddw:resume') { _ddwPaused = false; _maybeResume(); }
+  });
+  // Forward pointer position, throttled to one post per frame.
+  let _ptr = null;
+  window.addEventListener('mousemove', (e) => { _ptr = { x: e.clientX, y: e.clientY }; });
+  window.addEventListener('mouseleave', () => _post({ type: 'ddw:pointerleave' }));
+  (function _pump() {
+    requestAnimationFrame(_pump);
+    if (_ptr) { _post({ type: 'ddw:pointer', x: _ptr.x, y: _ptr.y }); _ptr = null; }
+  })();
+  // Any press on the world = "guiding" — the parent fades its title + nav out
+  // and restores them after a few idle seconds.
+  renderer.domElement.addEventListener('pointerdown', () => _post({ type: 'ddw:guide' }));
+}
+
+</script>
+</body>
+</html>
