@@ -130,6 +130,10 @@ body.deer-loading .cursor-dot, body.deer-loading .cursor-ring { display:none; }
      rendered frame; letting the browser manage compositing adaptively (as
      mrmrs does) is cheaper for a continuously-animating surface. */
 }
+/* Touch tier (phones/tablets): the world builds invisibly over the shader hero
+   and cross-fades in once it reports real frames (ddwRevealLite). */
+#ddw-hero-frame.ddw-lite { opacity:0; pointer-events:none; transition:opacity .9s ease; }
+#ddw-hero-frame.ddw-lite.ddw-shown { opacity:1; pointer-events:auto; }
 /* Over the world the cursor keeps its normal round dot+ring FORM and only
    RECOLORS to the season accent (--ddw-accent) — no size morph, no pixel
    treatment. Shape/size stay identical to the site cursor; colour changes. */
@@ -1389,7 +1393,7 @@ function buildScene(p, idx) {
   disc.textContent = p.discipline + ' · ' + p.year;
 
   const title = document.createElement('h3');
-  title.className = 'scene-title';
+  title.className = 'scene-title pixel-hover';
   title.innerHTML = p.title.split(' ')
     .map(w => '<span class="w"><span class="wi">' + escapeHTML(w) + '</span></span>')
     .join(' ');
@@ -1407,7 +1411,7 @@ function buildScene(p, idx) {
   meta.innerHTML = metaHTML;
 
   const cta = document.createElement('div');
-  cta.className = 'scene-cta';
+  cta.className = 'scene-cta pixel-hover';
   cta.innerHTML = 'View project <span class="arrow">→</span>';
   cta.addEventListener('click', () => navigateTo(p.page, navOpts()));
 
@@ -1425,6 +1429,122 @@ function buildScene(p, idx) {
 // hover tilt params — exposed on window so they can be nudged live while tuning
 const TILT = { rotY: 6, rotX: 4, parallax: 8, numShift: 17, persp: 1100, shadow: 26, reset: 0.5, heroDamp: 0.5 };
 window.__TILT = TILT;
+
+// ── PIXEL-FX (v2) ── on hover, an element TURNS INTO pixels: an SVG filter
+// resamples the element's OWN rendering (glyphs, colour, gradient) into chunky
+// blocks — a mosaic of itself, preserving shape/size/form. Not an overlay, not
+// an edge treatment. Applied only while hovered, so idle cost is zero.
+//
+// Block size SCALES WITH THE ELEMENT'S FONT SIZE (block ≈ fontSize / div,
+// clamped): a fixed block over-blurs small labels and under-pixelates big
+// numbers, so each target instead gets a block proportional to its own scale —
+// big scene numbers read chunky, small nav/CTA labels stay fine and legible.
+// Filters are built lazily and cached by integer block size (px-N).
+const PIXELFX = { div: 18, minBlock: 3, maxBlock: 10, rampMs: 170, clickMs: 240, clickBoost: 1.6 };
+window.__PIXELFX = PIXELFX;
+
+function pfxReduced() {
+  return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+// live gate (checked per-interaction, not once at bind time — headless/preview
+// reports hover:none at load, the documented initSceneTilt gotcha)
+function pfxActive() {
+  return window.matchMedia && window.matchMedia('(hover:hover)').matches && !pfxReduced();
+}
+
+// Block size for an element, derived from its rendered font size (re-read each
+// time so responsive clamp()/vw font sizes stay correct across viewport changes).
+function pfxBlockFor(el) {
+  const fs = parseFloat(getComputedStyle(el).fontSize) || 16;
+  return Math.max(PIXELFX.minBlock, Math.min(PIXELFX.maxBlock, Math.round(fs / PIXELFX.div)));
+}
+
+// Lazily build + cache one pixelate filter per integer block size (px-N).
+// Classic SVG pixelate chain: flood a 1px sample dot per NxN cell, tile it into
+// a grid, keep SourceGraphic only under the dots (samples the element), then
+// dilate each sample to fill its cell → a true low-res mosaic of the element.
+function pfxFilterId(n) {
+  const id = 'px-' + n;
+  if (document.getElementById(id)) return id;
+  const NS = 'http://www.w3.org/2000/svg';
+  let svg = document.getElementById('pfx-defs');
+  if (!svg) {
+    svg = document.createElementNS(NS, 'svg');
+    svg.id = 'pfx-defs'; svg.setAttribute('aria-hidden', 'true');
+    svg.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden;pointer-events:none';
+    svg.appendChild(document.createElementNS(NS, 'defs'));
+    document.body.appendChild(svg);
+  }
+  const mk = (name, attrs) => { const e = document.createElementNS(NS, name); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; };
+  const dot = 1, pos = (n - dot) / 2;
+  const f = mk('filter', { id: id, x: '-15%', y: '-15%', width: '130%', height: '130%', 'color-interpolation-filters': 'sRGB' });
+  f.appendChild(mk('feFlood', { x: pos, y: pos, width: dot, height: dot }));
+  f.appendChild(mk('feComposite', { width: n, height: n }));
+  f.appendChild(mk('feTile', { result: 'grid' }));
+  f.appendChild(mk('feComposite', { in: 'SourceGraphic', in2: 'grid', operator: 'in' }));
+  f.appendChild(mk('feMorphology', { operator: 'dilate', radius: n / 2 }));
+  svg.querySelector('defs').appendChild(f);
+  return id;
+}
+
+// Ramp an element between sharp (block 0) and its font-scaled max block —
+// discrete integer steps, which matches how pixelation quantises anyway.
+// _pfxCur holds the current block size in px; per-element state so any number
+// of targets animate independently.
+function pixelRamp(el, toPixel) {
+  if (el._pfxRaf) { cancelAnimationFrame(el._pfxRaf); el._pfxRaf = null; }
+  const from = el._pfxCur || 0, to = toPixel ? pfxBlockFor(el) : 0;
+  if (from === to) return;
+  const t0 = performance.now();
+  (function stepFn(now) {
+    const p = Math.min(1, (now - t0) / PIXELFX.rampMs);
+    const block = Math.round(from + (to - from) * p);
+    if (block !== el._pfxCur) {
+      el._pfxCur = block;
+      el.style.filter = block >= 1 ? 'url(#' + pfxFilterId(block) + ')' : '';
+    }
+    if (p < 1) el._pfxRaf = requestAnimationFrame(stepFn);
+    else el._pfxRaf = null;
+  })(t0);
+}
+
+// Click beat: snap to an extra-chunky block (scaled up from the element's max),
+// then settle back to hover/sharp.
+function pixelBurst(el) {
+  if (!el || !pfxActive()) return;
+  if (el._pfxRaf) { cancelAnimationFrame(el._pfxRaf); el._pfxRaf = null; }
+  const block = Math.min(PIXELFX.maxBlock + 4, Math.round(pfxBlockFor(el) * PIXELFX.clickBoost));
+  el._pfxCur = block;
+  el.style.filter = 'url(#' + pfxFilterId(block) + ')';
+  clearTimeout(el._pfxBurst);
+  el._pfxBurst = setTimeout(() => {
+    if (!el.isConnected) { el.style.filter = ''; el._pfxCur = 0; return; }
+    pixelRamp(el, el.matches(':hover'));
+  }, PIXELFX.clickMs);
+}
+
+function bindPixelTarget(el) {
+  if (el._pfxBound) return; el._pfxBound = true;
+  // SVG filters need a real box: on a pure-inline element (e.g. the hero-bio
+  // <em>) the filter region collapses and the element renders EMPTY (verified —
+  // "belong" vanished). Promote inline targets to inline-block, which keeps
+  // them in the text flow (baseline-aligned) but gives the filter a box.
+  if (getComputedStyle(el).display === 'inline') el.style.display = 'inline-block';
+  el.addEventListener('mouseenter', () => { if (pfxActive()) pixelRamp(el, true); });
+  el.addEventListener('mouseleave', () => { if (el._pfxCur || el._pfxRaf) pixelRamp(el, false); });
+  el.addEventListener('click', () => pixelBurst(el));
+}
+
+// Tag the static echo targets + bind them all. buildScene tags its own
+// title/cta at creation; the floating scene number is pointer-events:none so
+// it's driven from its scene-media hover inside initSceneTilt, not bound here.
+function initPixelFX() {
+  document.querySelectorAll('.nav-link, .nav-name-txt, .footer-link, .project-title')
+    .forEach(el => el.classList.add('pixel-hover'));
+  const belong = document.querySelector('.hero-bio em');
+  if (belong) belong.classList.add('pixel-hover');
+  document.querySelectorAll('.pixel-hover').forEach(bindPixelTarget);
+}
 
 // "Dimensional Glass" hover: cursor-tracked 3D tilt + inner photo parallax + directional shadow,
 // plus the project number floating on a closer plane (parallaxes opposite the photo → layered depth).
@@ -1455,6 +1575,10 @@ function initSceneTilt(media, parallax, numFloat) {
     py = (e.clientY - r.top) / r.height - 0.5;
     if (!raf) raf = requestAnimationFrame(apply);
   });
+  // the floating scene number pixelates in sync with hovering its image
+  // (it's pointer-events:none, so it can't receive its own hover — driven here)
+  media.addEventListener('mouseenter', function() { if (pfxActive()) pixelRamp(numFloat, true); });
+  media.addEventListener('click', function() { pixelBurst(numFloat); });
   media.addEventListener('mouseleave', function() {
     if (raf) { cancelAnimationFrame(raf); raf = null; }
     const t = 'transform ' + TILT.reset + 's var(--ease)';
@@ -1465,6 +1589,7 @@ function initSceneTilt(media, parallax, numFloat) {
     parallax.style.transform = '';
     numFloat.style.transition = t;
     numFloat.style.transform = '';
+    if (numFloat._pfxCur || numFloat._pfxRaf) pixelRamp(numFloat, false);
   });
 }
 
@@ -1695,6 +1820,11 @@ function resizeCanvas() {
 }
 
 function startHero() {
+  // A hidden canvas (the world hero is showing, or #home isn't the active
+  // page) has nothing to draw. resizeCanvas() bails on it but leaves the old
+  // W/H set, so without this check a tab switch (visibilitychange → startHero)
+  // quietly restarted the shader loop behind the world, where it kept running.
+  if (!canvas.offsetWidth) return;
   resizeCanvas();
   if (W && H && !rafId) rafId = requestAnimationFrame(drawTerrain);
 }
@@ -3031,15 +3161,19 @@ function swapPage(pageId) {
 
 // ── DOG-DEER WORLD as the interactive hero ──
 // On capable desktop the world (its own file) becomes the hero background, in
-// the normal scroll flow — interactive, replacing the shader. Mobile/weak/
-// reduced-motion keep the shader hero (#hero-canvas) and never build the world.
+// the normal scroll flow — interactive, replacing the shader. Phones/tablets
+// (since 2026-09-15) get the same world in its LITE profile — see
+// ddwActivateTouch. Reduced-motion, ?cms=1 and anything that can't run it keep
+// the shader hero (#hero-canvas) and never build the world.
 // A small postMessage bridge (world side gated behind ?embed=1) carries: the
 // season (to tint nav + recolor the "belong" word), pointer coords (so the
 // site cursor can render over the iframe, which swallows the parent's own
-// mousemove), and "guide" pulses (so the title + nav fade while the visitor
-// steers the deer, returning after a few idle seconds).
+// mousemove), "guide" pulses, and — touch tier — 'ddw:ready' (first real
+// frames rendered) / 'ddw:fallback' (too slow, or lost its GL context).
 let ddwCapable = false;
 let ddwFrame = null;
+let ddwLite = false;         // touch tier: world embedded with ?lite=1
+let ddwReadyTimer = null;
 // Season -> accent (the "belong" word + the cursor color while over the world).
 // Kept on the portfolio side so the palette stays in the site's design language.
 const DDW_SEASON_STYLE = {
@@ -3059,16 +3193,50 @@ function ddwCheckCapable() {
   return true;                                                            // fail SAFE toward the shader hero
 }
 
+// Touch tier (phones/tablets). There are no trustworthy hardware signals to
+// tier on here — iOS Safari reports a fixed core count and no deviceMemory —
+// so this only screens out what can't work at all. How well it actually runs
+// is measured by the world itself once it's up: it drops its resolution if
+// the GPU struggles, and if it's still too slow it posts 'ddw:fallback' and
+// the shader hero comes back (ddwFallback).
+function ddwCheckTouchCapable() {
+  if (new URLSearchParams(location.search).has('cms')) return false;
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return false;
+  if (!window.matchMedia('(pointer:coarse)').matches) return false;
+  try { if (sessionStorage.getItem('ddw_lite_off')) return false; } catch (e) {}   // already fell back this browsing session
+  if (navigator.connection && navigator.connection.saveData) return false;       // Data Saver on
+  if (navigator.deviceMemory && navigator.deviceMemory < 3) return false;        // Chrome-only signal: 2GB-class phones
+  // The world is an importmap + ES module (iOS Safari 16.4+); three.js r165
+  // needs WebGL2. Without either it would never boot — keep the shader.
+  if (!(window.HTMLScriptElement && HTMLScriptElement.supports && HTMLScriptElement.supports('importmap'))) return false;
+  try {
+    const gl = document.createElement('canvas').getContext('webgl2');
+    if (!gl) return false;
+    const lose = gl.getExtension('WEBGL_lose_context');
+    if (lose) lose.loseContext();   // free the probe context right away (phones cap live contexts)
+  } catch (e) { return false; }
+  return true;
+}
+
 function ddwBuildHero() {
   const band = document.querySelector('#home .hero-band');
   if (!band || ddwFrame) return;
-  pauseHero();                                       // shader not needed on desktop; free the GPU for the world
-  const canvas = document.getElementById('hero-canvas');
-  if (canvas) canvas.style.display = 'none';
   const iframe = document.createElement('iframe');
   iframe.id = 'ddw-hero-frame';
   iframe.title = 'Dog-Deer World';
-  iframe.src = 'dogdeer-world.html?embed=1';
+  if (ddwLite) {
+    // Touch tier: the shader hero stays up underneath while the world builds
+    // invisibly on top; ddwRevealLite cross-fades once it reports real frames.
+    // If it never does (blocked CDN, dead network), fall back after a while.
+    iframe.className = 'ddw-lite';
+    iframe.src = 'dogdeer-world.html?embed=1&lite=1';
+    ddwReadyTimer = setTimeout(() => ddwFallback('timeout'), 25000);
+  } else {
+    pauseHero();                                       // shader not needed on desktop; free the GPU for the world
+    const canvas = document.getElementById('hero-canvas');
+    if (canvas) canvas.style.display = 'none';
+    iframe.src = 'dogdeer-world.html?embed=1';
+  }
   iframe.addEventListener('load', () => {
     // world may have posted its season before our listener attached — ask again
     try { iframe.contentWindow.postMessage({ type: 'ddw:hello' }, '*'); } catch (e) {}
@@ -3088,10 +3256,52 @@ function ddwSetPaused(paused) {
   ddwFrame.contentWindow.postMessage({ type: paused ? 'ddw:pause' : 'ddw:resume' }, '*');
 }
 
+// Touch tier: the world has rendered real frames — cross-fade it in over the
+// shader hero, then stop and hide the shader once it's fully covered.
+function ddwRevealLite() {
+  if (!ddwFrame || ddwFrame.classList.contains('ddw-shown')) return;
+  clearTimeout(ddwReadyTimer);
+  ddwFrame.classList.add('ddw-shown');
+  setTimeout(() => {
+    if (!ddwFrame) return;                             // fell back in the meantime
+    pauseHero();
+    const canvas = document.getElementById('hero-canvas');
+    if (canvas) canvas.style.display = 'none';
+  }, 1000);                                            // just past the .9s opacity fade
+}
+
+// Touch tier: put the shader hero back (world too slow, lost its GL context,
+// or never came up). Remembered for the rest of the browsing session, except
+// a timeout (the network may just have been slow). The world usually decides
+// it's too slow BEFORE it's ever shown; if it was already visible, it
+// cross-fades back out over the restarted shader instead of cutting.
+function ddwFallback(reason) {
+  if (!ddwLite || !ddwFrame) return;
+  clearTimeout(ddwReadyTimer);
+  if (reason !== 'timeout') { try { sessionStorage.setItem('ddw_lite_off', reason || '1'); } catch (e) {} }
+  const frame = ddwFrame;
+  ddwFrame = null;                                     // stops pause/resume + message handling for it right away
+  document.documentElement.style.removeProperty('--ddw-accent');   // "belong" back to its default colour
+  const canvas = document.getElementById('hero-canvas');
+  if (canvas) canvas.style.display = '';
+  startHero();
+  if (frame.classList.contains('ddw-shown')) {
+    frame.classList.remove('ddw-shown');
+    setTimeout(() => frame.remove(), 1000);
+  } else {
+    frame.remove();
+  }
+}
+
 function ddwOnMessage(e) {
   const d = e.data;
   if (!d || typeof d.type !== 'string' || d.type.slice(0, 4) !== 'ddw:') return;
-  if (d.type === 'ddw:season') {
+  if (!ddwFrame || e.source !== ddwFrame.contentWindow) return;   // only our own world iframe
+  if (d.type === 'ddw:ready') {
+    if (ddwLite) ddwRevealLite();
+  } else if (d.type === 'ddw:fallback') {
+    ddwFallback(d.reason);
+  } else if (d.type === 'ddw:season') {
     ddwApplySeason(d.name);
   } else if (d.type === 'ddw:pointer') {
     // Map iframe-local coords into the parent viewport, then drive the site cursor.
@@ -3131,6 +3341,31 @@ function ddwMoveCursor(x, y, overWorld) {
 function ddwActivate() {
   window.addEventListener('message', ddwOnMessage);
   ddwBuildHero();
+  ddwObserveBand();
+}
+
+// Touch tier. The world's build runs on this page's main thread (same-origin
+// iframe), so it starts only once the "O'deer…" boot loader has finished —
+// otherwise that animation would stall mid-play on a phone. The shader hero
+// covers the wait.
+function ddwActivateTouch() {
+  ddwLite = true;
+  window.addEventListener('message', ddwOnMessage);
+  const waitStart = Date.now();
+  (function whenBootDone() {
+    if (_deerBooting && Date.now() - waitStart < 8000) { setTimeout(whenBootDone, 150); return; }
+    // …and only while the hero band is actually on screen: no point spending a
+    // phone's main thread building a world for someone already reading the
+    // projects (or on another page).
+    const band = document.querySelector('#home .hero-band');
+    const r = band && band.getBoundingClientRect();
+    if (!r || r.height === 0 || r.bottom <= 0 || r.top >= window.innerHeight) { setTimeout(whenBootDone, 400); return; }
+    ddwBuildHero();
+  })();
+  ddwObserveBand();
+}
+
+function ddwObserveBand() {
   // Pause the world's render loop while the band is off-screen so it never
   // competes with the GSAP/ScrollTrigger index; resume on return.
   //
@@ -3193,7 +3428,12 @@ function ddwInit() {
     if (ddwFrame) return;                             // already built
     ddwCapable = ddwCheckCapable();
     if (ddwCapable) { ddwActivate(); return; }
-    if (++tries < 14) setTimeout(attempt, 200);       // ~2.8s max, still imperceptible (shader is already visible meanwhile)
+    if (++tries < 14) { setTimeout(attempt, 200); return; }   // ~2.8s max, still imperceptible (shader is already visible meanwhile)
+    // Never read as a capable desktop through the whole window — only now try
+    // the touch tier, so a desktop whose pointer media misreports as coarse
+    // for a moment at load can't land in it. (Costs nothing on a phone: the
+    // touch tier waits out the ~2.6s boot loader anyway.)
+    if (ddwCheckTouchCapable()) ddwActivateTouch();
   })();
 }
 
@@ -3226,6 +3466,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   initCursor();
+  initPixelFX();
   initCMS();
 
   // restore page from URL hash — survives reload

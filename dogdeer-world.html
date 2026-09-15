@@ -31,6 +31,7 @@
       font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
       font-size: 11px; font-weight: 300; letter-spacing: .15em; text-transform: uppercase;
       color: rgba(240,235,225,0.38); pointer-events: none;
+      white-space: nowrap;   /* one line even on a phone-width band */
       transition: opacity .6s;
     }
 
@@ -145,6 +146,19 @@
        Below #load-veil (z-index 50) so it's hidden during boot and fades in
        with the reveal. */
     #season-filter { position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity 1.7s ease; }
+
+    /* Touch screens (phones/tablets): no hover and no keyboard. The interact
+       pill itself becomes the tap target (with a finger-sized hit area around
+       the small pill), taps on the world don't flash iOS's grey tap highlight,
+       double-tap doesn't zoom, and a long press doesn't start a text selection.
+       touch-action keeps panning, so a swipe over the world still scrolls the
+       page it's embedded in. */
+    @media (pointer: coarse) {
+      canvas { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+      body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+      #e-prompt { pointer-events: auto; -webkit-tap-highlight-color: transparent; }
+      #e-prompt::before { content: ''; position: absolute; inset: -14px -12px; }
+    }
   </style>
 </head>
 <body>
@@ -292,11 +306,9 @@ document.title = 'Dog-Deer World — ' + SEASON.name;
   // frame so both transitions run — the vignette used to snap to full
   // strength the instant the veil uncovered it (no transition of its own);
   // now it ramps in alongside the reveal instead of arriving pre-formed.
-  requestAnimationFrame(() => requestAnimationFrame(() => {
-    veil.style.opacity = '0';
-    edgeFog.style.opacity = '1';
-    seasonFilter.style.opacity = '1';
-  }));
+  // (LITE builds in chunks — see liteYield — so this would fire mid-build and
+  // uncover an empty canvas; it reveals from animate once real frames exist.)
+  requestAnimationFrame(() => requestAnimationFrame(() => { if (!LITE) revealLoadVeil(); }));
 
   // Viewport edge fog: a radial vignette in the season's veil tint, wrapping
   // ALL four frame edges (unlike scene.fog, which can't reach the bottom).
@@ -323,6 +335,11 @@ document.title = 'Dog-Deer World — ' + SEASON.name;
   // bridge below). Static (no animation): the "atmosphere" is the seasonal
   // tint framing the frame edges, not moving elements.
   seasonFilter.style.background = vignette;
+}
+function revealLoadVeil() {
+  document.getElementById('load-veil').style.opacity = '0';
+  document.getElementById('edge-fog').style.opacity = '1';
+  document.getElementById('season-filter').style.opacity = '1';
 }
 
 // ── Wind ─────────────────────────────────────────────────────────────────────
@@ -452,6 +469,41 @@ const CAPTURE = new URLSearchParams(location.search).has('capture');
 // behind the bio text, so it can afford mrmrs's lean settings; the standalone
 // page stays full-fidelity since it's the whole screen and the focus.
 const EMBED = new URLSearchParams(location.search).has('embed');
+// LITE = the phone/tablet profile (2026-09-15). The portfolio passes ?lite=1
+// when it embeds the world on a touch device; the standalone page picks it up
+// from a coarse primary pointer; ?lite=0 forces the full profile for testing.
+// Everything LITE changes is either invisible (never-seen trees skipped, work
+// that doesn't need 60Hz spread across alternate frames) or a resolution
+// choice — the scene itself looks the same. Measured before this existed, on a
+// 4×-throttled CPU (≈ mid-range phone): ~27fps and a ~4.8s main-thread freeze
+// while the world built, which on the portfolio also froze the page around it
+// (the iframe is same-origin, so it shares the page's main thread).
+const _liteParam = new URLSearchParams(location.search).get('lite');
+const LITE = _liteParam === '1'
+  || (_liteParam !== '0' && !!window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+// The input device, separately from the perf profile: touch gets tap wording
+// and a tappable interact pill (see the (pointer: coarse) CSS above).
+const COARSE_POINTER = !!window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+const HINT_TEXT = (COARSE_POINTER ? 'tap' : 'click') + ' to guide · wanders on its own';
+document.getElementById('hint').textContent = HINT_TEXT;
+// LITE renders to a pixel BUDGET rather than a fixed ratio: 1× on a phone's 3×
+// screen reads blurry, while a tablet-sized band is big enough that ~1.1× is
+// plenty. Capped at 1.5× like the standalone page; the frame-rate guard (see
+// animate) drops to 1× if the GPU can't keep up.
+const LITE_PIXEL_BUDGET = 1.0e6;
+let _litePixelCap = 1.5;
+function litePixelRatio() {
+  const fit = Math.sqrt(LITE_PIXEL_BUDGET / Math.max(1, W * H));
+  return Math.max(1, Math.min(window.devicePixelRatio || 1, _litePixelCap, fit));
+}
+// LITE breaks the synchronous world build into a few chunks (top-level awaits
+// at the big phases: terrain heights, the rest of the terrain + water, the
+// forest, shader compile). Same total work, but the embedding page gets its
+// main thread back in between, so taps and its own animation don't hang for
+// the whole build on a phone. The desktop build is untouched (no awaits).
+// Only callbacks registered BEFORE a yield can fire during it — keep new
+// listeners below the last one (see the TDZ notes in handoff.md).
+const liteYield = () => new Promise(resolve => setTimeout(resolve, 0));
 // Idle deer turning to face the cursor — turned off for now (Morris's call,
 // 2026-07-14). Flip to true to bring it back; see the idle-turn block further
 // down (search MOUSE_LOOK_ENABLED).
@@ -465,9 +517,13 @@ renderer.setSize(W, H);
 // display that's 2.25× fewer pixels shaded per frame than our old 1.5× cap, the
 // single biggest fill-rate win and the main thing freeing up GPU/main-thread
 // headroom so the page scroll stops stuttering while the world is on screen.
-renderer.setPixelRatio(EMBED ? 1 : Math.min(window.devicePixelRatio, 1.5));
+renderer.setPixelRatio(LITE ? litePixelRatio() : EMBED ? 1 : Math.min(window.devicePixelRatio, 1.5));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+// LITE re-renders the shadow map every other frame instead of every frame (see
+// the end of animate) — the sun never moves, and a shadow one frame behind a
+// walking deer is imperceptible.
+renderer.shadowMap.autoUpdate = !LITE;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.08;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -485,7 +541,7 @@ sun.castShadow = true;
 // GPU-side trim rather than the fix for that. Embed drops to 512 (the world
 // is a small background band there, shadow detail is imperceptible at that
 // size) for another fill-rate saving toward smoother scroll.
-{ const _sm = EMBED ? 512 : 1024; sun.shadow.mapSize.set(_sm, _sm); }
+{ const _sm = (EMBED || LITE) ? 512 : 1024; sun.shadow.mapSize.set(_sm, _sm); }
 sun.shadow.camera.left   = -40;
 sun.shadow.camera.right  =  40;
 sun.shadow.camera.top    =  40;
@@ -693,11 +749,14 @@ const WATER_LEVEL = -0.34;
 const BASIN_FLOOR = -1.35;
 const BOWL_INNER = 15, BOWL_OUTER = 34, BOWL_AMP = 2.6;
 
-function heightAt(x, z) {
+// `li` (optional): lakeFieldAt(x, z), when the caller already has it — the
+// world build evaluates both for every terrain/water vertex, and lakeFieldAt's
+// domain warp is the expensive half. Same result either way.
+function heightAt(x, z, li) {
   let h = fbm(x, z) * 0.22;
   const dCenter = Math.hypot(x - LAKE_CX, z - LAKE_CZ);
   h += smoothstep(BOWL_INNER, BOWL_OUTER, dCenter) * BOWL_AMP;
-  const lakeInf = lakeFieldAt(x, z);
+  const lakeInf = li === undefined ? lakeFieldAt(x, z) : li;
   if (lakeInf > 0) h = h * (1 - lakeInf) + BASIN_FLOOR * lakeInf;
   const b = beachInfluence(x, z);
   if (b > 0) h = h * (1 - b * 0.9) + (WATER_LEVEL + 0.05) * (b * 0.9);
@@ -732,7 +791,7 @@ function floorShadeColor(x, z) {
 }
 const SAND = new THREE.Color(SEASON.snow ? 0xE6EAEC : 0xD8C89A);
 
-function terrainColorAt(x, z, h) {
+function terrainColorAt(x, z, h, li) {   // li: optional precomputed lakeFieldAt(x, z), see heightAt
   const col = floorShadeColor(x, z);
   col.offsetHSL(0, 0, THREE.MathUtils.clamp(h * 0.05, -0.16, 0.16));
   // Every object's ground pad reads the same sandy tone as the chair's beach
@@ -746,7 +805,7 @@ function terrainColorAt(x, z, h) {
   // margin right at the waterline before the tree line starts) — strongest
   // right where the water mesh itself fades in (li ~0.10-0.16), fading to
   // nothing by li=0 so it doesn't bleed into the rest of the forest floor.
-  const shore = smoothstep(0, 0.16, lakeFieldAt(x, z));
+  const shore = smoothstep(0, 0.16, li === undefined ? lakeFieldAt(x, z) : li);
   if (shore > 0) col.lerp(SAND, shore * 0.8);
   return col;
 }
@@ -755,7 +814,9 @@ function terrainColorAt(x, z, h) {
 // it's outside the pond field — used to keep every scattered prop out of the
 // water (trees were sneaking into the shallows before).
 function onLand(x, z) {
-  return heightAt(x, z) > WATER_LEVEL + 0.08 && lakeFieldAt(x, z) < 0.02;
+  // Pond field first (it's needed either way, and heightAt can reuse it).
+  const li = lakeFieldAt(x, z);
+  return li < 0.02 && heightAt(x, z, li) > WATER_LEVEL + 0.08;
 }
 
 // Base terrain plane. SEG raised from 100 (was tuned for a (WORLD+6)*2=92-wide
@@ -767,16 +828,28 @@ const SEG = 140;
 let groundGeo = new THREE.PlaneGeometry(GROUND_HALF * 2, GROUND_HALF * 2, SEG, SEG);
 {
   const pos = groundGeo.attributes.position;
-  for (let i = 0; i < pos.count; i++) pos.setZ(i, heightAt(pos.getX(i), -pos.getY(i)));
-  groundGeo = groundGeo.toNonIndexed();
-  const p2 = groundGeo.attributes.position;
-  const colors = new Float32Array(p2.count * 3);
+  const groundLi = new Float64Array(pos.count);   // lakeFieldAt per vertex, shared by heights + colours
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), z = -pos.getY(i);
+    groundLi[i] = lakeFieldAt(x, z);
+    pos.setZ(i, heightAt(x, z, groundLi[i]));
+  }
+  if (LITE) await liteYield();
+  // Colours are computed once per SHARED grid vertex, before toNonIndexed()
+  // splits the grid into per-triangle copies (which carries the colour
+  // attribute across). Byte-identical result to colouring the ~117k split
+  // vertices one by one — each grid point used to be re-coloured once per
+  // triangle touching it (up to 6×), and terrainColorAt is noise-heavy: this
+  // was the single biggest cost of building the world (~2s of a ~4.8s build
+  // on a phone-speed CPU).
+  const colors = new Float32Array(pos.count * 3);
   const tmp = new THREE.Color();
-  for (let i = 0; i < p2.count; i++) {
-    tmp.copy(terrainColorAt(p2.getX(i), -p2.getY(i), p2.getZ(i)));
+  for (let i = 0; i < pos.count; i++) {
+    tmp.copy(terrainColorAt(pos.getX(i), -pos.getY(i), pos.getZ(i), groundLi[i]));
     colors[i * 3] = tmp.r; colors[i * 3 + 1] = tmp.g; colors[i * 3 + 2] = tmp.b;
   }
   groundGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  groundGeo = groundGeo.toNonIndexed();
   groundGeo.computeVertexNormals();
 }
 const ground = new THREE.Mesh(groundGeo, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
@@ -896,20 +969,28 @@ function buildWaterMesh() {
   // buys the budget to recompute normals EVERY frame (see updateWaterWake) —
   // and without per-frame normals the surface can move all it likes and
   // still render as a flat sheet, which is exactly what it was doing.
-  const vertMap = new Map();          // "x,z" -> new vertex index
+  // lakeFieldAt/heightAt are pure, and every grid vertex is shared by up to 6
+  // triangles — so each is evaluated ONCE per source vertex and reused (the
+  // face test below used to re-run both for every triangle corner, and
+  // addVert then ran them again). Same values, same vertex order, same mesh.
+  const infCache = new Float64Array(src.count).fill(NaN);
+  const hCache = new Float64Array(src.count).fill(NaN);
+  const infOf = si => { let v = infCache[si]; if (v !== v) v = infCache[si] = lakeFieldAt(src.getX(si), src.getZ(si)); return v; };
+  const hOf = si => { let v = hCache[si]; if (v !== v) v = hCache[si] = heightAt(src.getX(si), src.getZ(si), infOf(si)); return v; };
+  const vertMap = new Int32Array(src.count).fill(-1);   // source grid vertex -> new vertex index
   const positions = [], colors = [], indices = [], bed = [], windPh = [];
   const vcol = new THREE.Color();
   // Deepest the swell can ever pull the surface below WATER_LEVEL — used to
   // keep any face the water could EVER uncover/recover, so the waterline has
   // real geometry to travel across instead of stopping at a baked-in edge.
   const SWELL_HEADROOM = 0.55;
-  const addVert = (vx, vz) => {
-    const key = vx + ',' + vz;
-    let vi = vertMap.get(key);
-    if (vi !== undefined) return vi;
+  const addVert = (si) => {
+    let vi = vertMap[si];
+    if (vi !== -1) return vi;
     vi = positions.length / 3;
-    vertMap.set(key, vi);
-    const inf = lakeFieldAt(vx, vz);
+    vertMap[si] = vi;
+    const vx = src.getX(si), vz = src.getZ(si);
+    const inf = infOf(si);
     if (SEASON.ice) {
       // Frozen solid: clean pale ice, slightly deeper-toned toward the
       // middle. Deliberately NO crack/streak detailing — two attempts at
@@ -927,18 +1008,14 @@ function buildWaterMesh() {
     }
     positions.push(vx, 0, vz);
     colors.push(vcol.r, vcol.g, vcol.b, 1);
-    bed.push(heightAt(vx, vz));
+    bed.push(hOf(si));
     windPh.push(vx * WIND_DIR_X + vz * WIND_DIR_Z);
     return vi;
   };
   for (let f = 0; f < srcIdx.count; f += 3) {
     const a = srcIdx.getX(f), b2 = srcIdx.getX(f + 1), c2 = srcIdx.getX(f + 2);
-    let minInf = Infinity, minGroundH = Infinity;
-    for (const vi of [a, b2, c2]) {
-      const vx = src.getX(vi), vz = src.getZ(vi);
-      minInf = Math.min(minInf, lakeFieldAt(vx, vz));
-      minGroundH = Math.min(minGroundH, heightAt(vx, vz));
-    }
+    const minInf = Math.min(infOf(a), infOf(b2), infOf(c2));
+    const minGroundH = Math.min(hOf(a), hOf(b2), hOf(c2));
     // Keep anything the water can plausibly reach at ANY point in the swell
     // cycle. The old cull (`minInf < 0.10` + drop any face whose ground pokes
     // above the waterline) is precisely why the edge could never move: every
@@ -946,9 +1023,7 @@ function buildWaterMesh() {
     // time, so the boundary was frozen into the geometry itself.
     if (minInf < 0.02) continue;
     if (minGroundH > WATER_LEVEL + SWELL_HEADROOM) continue;
-    indices.push(addVert(src.getX(a), src.getZ(a)),
-                 addVert(src.getX(b2), src.getZ(b2)),
-                 addVert(src.getX(c2), src.getZ(c2)));
+    indices.push(addVert(a), addVert(b2), addVert(c2));
   }
   geo.dispose();
   waterGeo = new THREE.BufferGeometry();
@@ -1243,7 +1318,12 @@ function buildInstancedSpecies(placements, variantFn, flex) {
   for (let v = 0; v < TREE_VARIANTS; v++) {
     const bucket = buckets[v];
     if (bucket.length === 0) { variantGeoms[v].dispose(); continue; }
+    // LITE: order the batch by distance from the world's centre line (|x|) so
+    // its draw count can be trimmed to exactly what the current aspect ratio
+    // can ever show, and grown back when a phone rotates (liteFitTreeCounts).
+    if (LITE) bucket.sort((p, q) => Math.abs(p.x) - Math.abs(q.x));
     const im = new THREE.InstancedMesh(variantGeoms[v], TREE_MAT, bucket.length);
+    if (LITE) im.userData.absX = Float32Array.from(bucket, p => Math.abs(p.x));
     im.castShadow = true;
     im.receiveShadow = true;
     for (let i = 0; i < bucket.length; i++) {
@@ -1285,6 +1365,9 @@ function scatterBush(x, z) {
     const b = mesh(new THREE.IcosahedronGeometry(s, 0), col, g);
     b.position.set((Math.random() - 0.5) * 0.22, s * 0.65, (Math.random() - 0.5) * 0.22);
     b.scale.y = 0.7;
+    // LITE: a clump never moves inside its bush (the wind rotates the bush's
+    // group), so its local matrix is computed once, not every frame.
+    if (LITE) { b.updateMatrix(); b.matrixAutoUpdate = false; }
   }
   g.traverse(c => { c.castShadow = false; }); // small prop — skip the shadow pass
   scene.add(g);
@@ -1316,7 +1399,9 @@ function scatterRock(x, z) {
   r.position.set(x, h + s * (0.10 + Math.random() * 0.14), z);
   r.rotation.set(Math.random(), Math.random() * Math.PI, Math.random());
   r.castShadow = false;
+  ROCKS.push(r);
 }
+const ROCKS = [];   // filled by scatterRock (the scatter loop below runs after this line)
 
 // ── Project Objects ───────────────────────────────────────────────────────────
 // Shared winter snow dusting for the 6 interactable objects — a thin flattened
@@ -1423,7 +1508,9 @@ function makeGreyHouse(g) {
 }
 
 // Build the water mesh (needs OBJS + terrain fns, all declared above).
+if (LITE) await liteYield();
 buildWaterMesh();
+if (LITE) await liteYield();
 
 // Scatter flora — denser than before (closer to Walden Woods) but still
 // navigable, with clearings kept around the objects.
@@ -1450,9 +1537,19 @@ buildWaterMesh();
 // visible tint gets a plant on it.
 const BEACH_CLEAR = 0.1;
 const TREE_FILL = GROUND_HALF - 2;
+// LITE: don't plant trees in the north/south bands no camera ever shows. The
+// follow camera is clamped (WALK) and tilted, so whatever the aspect ratio its
+// frame never reaches past z≈-37 (top edge) or z≈+39.5 (bottom edge, counting
+// tall canopies and the sky-descent intro) — sampled across the whole frame
+// for aspects 0.45–6. Everything past that is ~40% of the scatter, pure waste
+// on a phone. +6 units of margin for canopy width and shadows. (Left/right
+// reach DOES depend on aspect — that side is trimmed live per aspect instead,
+// see liteFitTreeCounts.) Recompute if CAM_OFFSET/EDGE_MARGIN/FOV change.
+const TREE_SEEN_Z_MIN = -46, TREE_SEEN_Z_MAX = 48;
 for (let i = 0; i < 4000; i++) {
   const x = (Math.random() * 2 - 1) * TREE_FILL;
   const z = (Math.random() * 2 - 1) * TREE_FILL;
+  if (LITE && (z < TREE_SEEN_Z_MIN || z > TREE_SEEN_Z_MAX)) continue;
   if (!onLand(x, z)) continue;
   if (beachInfluence(x, z) > BEACH_CLEAR) continue;
   if (nearAnyObject(x, z, 2.2)) continue;
@@ -1466,6 +1563,7 @@ for (let i = 0; i < 2080; i++) {
   const x = (Math.random() * 2 - 1) * TREE_FILL;
   const z = (Math.random() * 2 - 1) * TREE_FILL;
   if (Math.hypot(x - LAKE_CX, z - LAKE_CZ) < WORLD * 0.62) continue;
+  if (LITE && (z < TREE_SEEN_Z_MIN || z > TREE_SEEN_Z_MAX)) continue;
   if (!onLand(x, z)) continue;
   if (nearAnyObject(x, z, 2.2)) continue;   // was missing — let a tree spawn
                                              // right on top of Cities' house
@@ -1500,6 +1598,29 @@ for (let i = 0; i < 140; i++) {
   if (nearAnyObject(x, z, 1.5)) continue;
   scatterRock(x, z);
 }
+// LITE: rocks never move, so fold them into one mesh per colour instead of
+// ~130 separate scene objects for the renderer to update, cull and draw every
+// frame (hiding all rocks + bushes measured ~a third of the per-frame render
+// cost on a throttled phone CPU). Same geometry, same materials, same look.
+if (LITE && ROCKS.length) {
+  const byMaterial = new Map();
+  for (const r of ROCKS) {
+    r.updateMatrix();
+    const list = byMaterial.get(r.material) || [];
+    list.push(r.geometry.clone().applyMatrix4(r.matrix));
+    byMaterial.set(r.material, list);
+    scene.remove(r);
+    r.geometry.dispose();
+  }
+  for (const [material, geos] of byMaterial) {
+    const merged = new THREE.Mesh(mergeGeometries(geos), material);
+    merged.receiveShadow = true;   // rocks never cast (see scatterRock), but do receive
+    merged.matrixAutoUpdate = false;
+    scene.add(merged);
+    geos.forEach(g => g.dispose());
+  }
+  ROCKS.length = 0;
+}
 
 // Extra shoreline-hugging trees. The uniform scatter passes above are random
 // over the whole map, so they don't reliably thicken the ring just past the
@@ -1530,6 +1651,7 @@ for (const [bcx, bcz, br] of LAKE_BLOBS) {
 // Now that every scatter pass above has queued its placements, actually build
 // the InstancedMeshes (need final per-variant counts before construction) —
 // this is what populates TREES.
+if (LITE) await liteYield();
 finalizeInstancedTrees();
 
 // Bucket every scattered tree into the spatial grid used by updateTrees
@@ -1541,6 +1663,23 @@ for (let i = 0; i < TREES.length; i++) {
   let bucket = treeGrid.get(key);
   if (!bucket) treeGrid.set(key, bucket = []);
   bucket.push(tr);
+}
+
+// LITE wind grid. The wind pass (updateTreeWind) otherwise has to touch every
+// tree every frame — on a phone only the ones under the camera's current frame
+// need it (a portrait frame covers a thin slice of the forest). A flat,
+// fixed-size grid over the planted area keeps the per-frame lookup free of
+// string keys and allocation. Trees outside the frame just keep their last
+// sway pose, which nobody can see.
+const LITE_WIND_CELL = 4;
+const LITE_WIND_N = Math.ceil((GROUND_HALF * 2) / LITE_WIND_CELL);
+const liteWindCells = LITE ? Array.from({ length: LITE_WIND_N * LITE_WIND_N }, () => []) : null;
+function liteWindCellIndex(v) {
+  return Math.min(LITE_WIND_N - 1, Math.max(0, Math.floor((v + GROUND_HALF) / LITE_WIND_CELL)));
+}
+if (LITE) {
+  for (const tr of TREES) liteWindCells[liteWindCellIndex(tr.bz) * LITE_WIND_N + liteWindCellIndex(tr.bx)].push(tr);
+  await liteYield();
 }
 
 // Build the interactable objects (scaled up so they stand out over the trees).
@@ -1844,8 +1983,50 @@ function updateWaterWake(dt, deerX, deerZ, gustEnv) {
   // actually moved. Affordable now because the mesh is indexed (~6x fewer
   // vertices than the old non-indexed expansion), and indexing is also what
   // makes these normals smooth rather than faceted.
-  waterGeo.computeVertexNormals();
+  if (LITE) liteWaterNormals(); else waterGeo.computeVertexNormals();
   waterWaked = active;
+}
+
+// LITE water normals — same area-weighted vertex normals computeVertexNormals
+// produces, specialised to this mesh. The lake is a height field whose x/z never
+// move, so every triangle's x/z edge vectors (and with them its normal's Y
+// component) are constant: they're computed once, and each frame only the y
+// differences change. computeVertexNormals (general-purpose: copies every
+// corner into Vector3s, subtracts, crosses) was ~60% of the water pass's cost.
+let _lwnTri = null;   // per triangle, static: e1x, e1z, e2x, e2z, ny
+function liteWaterNormals() {
+  const idx = waterGeo.index.array;
+  const pos = waterGeo.attributes.position.array;
+  const nrm = waterGeo.attributes.normal.array;
+  const triCount = idx.length / 3;
+  if (!_lwnTri) {
+    _lwnTri = new Float32Array(triCount * 5);
+    for (let f = 0; f < triCount; f++) {
+      const a = idx[f * 3] * 3, b = idx[f * 3 + 1] * 3, c = idx[f * 3 + 2] * 3, o = f * 5;
+      const e1x = pos[c] - pos[b], e1z = pos[c + 2] - pos[b + 2];   // edge b→c
+      const e2x = pos[a] - pos[b], e2z = pos[a + 2] - pos[b + 2];   // edge b→a
+      _lwnTri[o] = e1x; _lwnTri[o + 1] = e1z; _lwnTri[o + 2] = e2x; _lwnTri[o + 3] = e2z;
+      _lwnTri[o + 4] = e1z * e2x - e1x * e2z;
+    }
+  }
+  nrm.fill(0);
+  for (let f = 0; f < triCount; f++) {
+    const ia = idx[f * 3] * 3, ib = idx[f * 3 + 1] * 3, ic = idx[f * 3 + 2] * 3, o = f * 5;
+    const yb = pos[ib + 1];
+    const e1y = pos[ic + 1] - yb, e2y = pos[ia + 1] - yb;
+    // (b→c) × (b→a), as computeVertexNormals does
+    const nx = e1y * _lwnTri[o + 3] - _lwnTri[o + 1] * e2y;
+    const ny = _lwnTri[o + 4];
+    const nz = _lwnTri[o] * e2y - e1y * _lwnTri[o + 2];
+    nrm[ia] += nx; nrm[ia + 1] += ny; nrm[ia + 2] += nz;
+    nrm[ib] += nx; nrm[ib + 1] += ny; nrm[ib + 2] += nz;
+    nrm[ic] += nx; nrm[ic + 1] += ny; nrm[ic + 2] += nz;
+  }
+  for (let i = 0; i < nrm.length; i += 3) {
+    const l = Math.sqrt(nrm[i] * nrm[i] + nrm[i + 1] * nrm[i + 1] + nrm[i + 2] * nrm[i + 2]) || 1;
+    nrm[i] /= l; nrm[i + 1] /= l; nrm[i + 2] /= l;
+  }
+  waterGeo.attributes.normal.needsUpdate = true;
 }
 
 // ── Deer AI ───────────────────────────────────────────────────────────────────
@@ -2018,6 +2199,16 @@ const objLabelEl = document.getElementById('obj-label');
 const interactTextEl = document.getElementById('interact-text');
 let nearbyObj = null;
 let interacting = false;
+// Touch has no [E] key: the pill says "tap to interact" and is itself the
+// button (made tappable by the (pointer: coarse) CSS). The [E] key still works
+// wherever there is a keyboard.
+if (COARSE_POINTER) {
+  ePromptEl.textContent = 'tap to interact';
+  ePromptEl.addEventListener('click', e => {
+    e.stopPropagation();
+    if (nearbyObj && !interacting && !sandboxMode) triggerInteraction(nearbyObj);
+  });
+}
 
 function showEPrompt(obj) {
   const s = toScreen(obj.grp.position.clone().add(new THREE.Vector3(0, 2.9, 0)));
@@ -2064,6 +2255,11 @@ function triggerInteraction(obj) {
     }
   }, 65);
   const ts = toScreen(obj.grp.position.clone().add(new THREE.Vector3(0, 3.4, 0)));
+  // Keep the (up to 260px wide, centre-anchored) text inside the frame — on a
+  // phone-width band an object near the side would otherwise push half of it
+  // off screen. A no-op whenever it already fits.
+  const halfText = Math.min(130, W / 2 - 12);
+  ts.x = Math.min(W - 12 - halfText, Math.max(12 + halfText, ts.x));
   interactTextEl.style.left = ts.x + 'px'; interactTextEl.style.top = ts.y + 'px';
   interactTextEl.textContent = obj.text; interactTextEl.style.opacity = '0';
   interactTextEl.style.display = 'block';
@@ -2117,7 +2313,7 @@ function enterSandbox() {
 }
 function exitSandbox() {
   sandboxMode = false; palette.style.display = 'none';
-  document.getElementById('hint').textContent = 'click to guide · wanders on its own';
+  document.getElementById('hint').textContent = HINT_TEXT;
   document.getElementById('mode-badge').textContent = '';
 }
 function placeSandboxTile(e) {
@@ -2180,6 +2376,7 @@ const WALK = BOUND + EDGE_MARGIN;
 // derived from the camera height/tilt/FOV/aspect. Used to clamp the follow
 // point so the frame stops exactly at the walkable edge (and holds at corners).
 let reachN = 4, reachS = 4, reachX = 4;
+let liteWindHalfX = 20;   // LITE wind window half-width, see updateTreeWind
 function computeCamReach() {
   const Hc = CAM_OFFSET.y, Dc = CAM_OFFSET.z;
   const pitch = Math.atan2(Hc - 0.6, Dc);
@@ -2189,8 +2386,39 @@ function computeCamReach() {
   reachS = Math.max(2, Dc - gr(pitch + fv));   // toward camera (bottom of frame)
   const fh = Math.atan(Math.tan(fv) * camera.aspect);
   reachX = Math.hypot(Hc, Dc) * Math.tan(fh);  // sideways
+  // The frame is a trapezoid on the ground: its far edge reaches much wider
+  // than reachX (measured at the look target). Fog caps how far that can be
+  // seen — three.js fogs by view DEPTH, so nothing deeper than fog.far shows.
+  liteWindHalfX = scene.fog.far * Math.tan(fv) * camera.aspect + 4;
 }
 computeCamReach();
+
+// LITE: trim each tree batch's draw count to the instances this aspect ratio
+// can ever put on screen: the camera's clamped sideways travel plus the far
+// edge's reach (or, during the sky descent, the fog limit). Batches are sorted
+// by |x| at build (buildInstancedSpecies), so this is one binary search per
+// batch, and rotating a phone just grows or shrinks the counts again.
+// Sampled against the real frame for aspects 0.45–6 (incl. the descent).
+const LITE_FAR_EDGE_DEPTH = (() => {
+  // View depth from the camera to where the TOP frame edge meets low ground.
+  const L = Math.hypot(CAM_OFFSET.y - 0.6, CAM_OFFSET.z);
+  const tv = Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
+  const dirY = (-(CAM_OFFSET.y - 0.6) + CAM_OFFSET.z * tv) / L;
+  return (CAM_OFFSET.y + 0.7) / -dirY;
+})();
+function liteFitTreeCounts() {
+  if (!LITE) return;
+  const th = Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2) * camera.aspect;
+  const travel = Math.max(0, WALK - reachX);   // clampFollow's sideways limit (0 = view centred)
+  const limit = Math.max(travel + LITE_FAR_EDGE_DEPTH * th, scene.fog.far * th) + 8;
+  for (const im of TREE_INSTANCED_MESHES) {
+    const a = im.userData.absX;
+    let lo = 0, hi = a.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (a[mid] <= limit) lo = mid + 1; else hi = mid; }
+    if (im.count !== lo) { im.count = lo; im.boundingSphere = null; }   // re-fit the cull sphere to the new count
+  }
+}
+liteFitTreeCounts();
 
 // Clamp a follow point so the visible frame stays inside [-WALK, WALK] on each
 // axis. When the view is wider than the world on an axis, centre on that axis.
@@ -2216,7 +2444,10 @@ const _camFollow = new THREE.Vector3();
 const INTRO_MS = 3400;
 const PREFERS_REDUCED_MOTION = window.matchMedia
   && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-const _introStart = performance.now();
+// let, not const: LITE restarts this clock once the first frames are actually
+// on screen (see the 'ddw:ready' block in animate) — its chunked build and
+// shader compile would otherwise eat into the descent before anyone sees it.
+let _introStart = performance.now();
 const camLookTarget = clampFollow(deerRoot.position.clone());
 // Reduced-motion: skip the flythrough outright — start at the normal
 // position with the deer already free to move, same as the old behavior.
@@ -2364,22 +2595,44 @@ function windGustEnvelope() {
 // the full instance matrix (position + push+wind rotation + per-tree scale)
 // and write it, rather than doing a second full pass.
 const _windDummy = new THREE.Object3D();
+function windTree(tr, amp0) {
+  const phase = t * WIND_TEMPO - (tr.bx * WIND_DIR_X + tr.bz * WIND_DIR_Z) * WIND_TRAVEL_K + tr.windSeed;
+  const sway = Math.sin(phase) * amp0 * tr.flex;
+  const rotZ = tr.pushRotZ - WIND_DIR_X * sway;
+  const rotX = tr.pushRotX + WIND_DIR_Z * sway;
+  _windDummy.position.set(tr.bx + tr.ox, tr.baseY, tr.bz + tr.oz);
+  _windDummy.rotation.set(rotX, 0, rotZ);
+  _windDummy.scale.setScalar(tr.scale);
+  _windDummy.updateMatrix();
+  tr.mesh.setMatrixAt(tr.idx, _windDummy.matrix);
+}
 function updateTreeWind(gustEnv) {
   const amp0 = WIND_SPEED * gustEnv * WIND_SWAY_BASE * (SEASON.bare ? 1.15 : 1); // bare branches whip more per unit wind
-  for (let i = 0; i < TREES.length; i++) {
-    const tr = TREES[i];
-    const phase = t * WIND_TEMPO - (tr.bx * WIND_DIR_X + tr.bz * WIND_DIR_Z) * WIND_TRAVEL_K + tr.windSeed;
-    const sway = Math.sin(phase) * amp0 * tr.flex;
-    const rotZ = tr.pushRotZ - WIND_DIR_X * sway;
-    const rotX = tr.pushRotX + WIND_DIR_Z * sway;
-    _windDummy.position.set(tr.bx + tr.ox, tr.baseY, tr.bz + tr.oz);
-    _windDummy.rotation.set(rotX, 0, rotZ);
-    _windDummy.scale.setScalar(tr.scale);
-    _windDummy.updateMatrix();
-    tr.mesh.setMatrixAt(tr.idx, _windDummy.matrix);
+  if (LITE) {
+    // Only the cells under the current frame (see liteWindCells). The window
+    // is centred on the camera's look target: sideways it spans the frame's
+    // widest reach (its far edge, or the fog limit during the sky descent);
+    // front-to-back it covers the top edge (~27u ahead) through the bottom
+    // edge incl. tall canopies and the descent (~25u behind), plus margin.
+    const x0 = liteWindCellIndex(camLookTarget.x - liteWindHalfX), x1 = liteWindCellIndex(camLookTarget.x + liteWindHalfX);
+    const z0 = liteWindCellIndex(camLookTarget.z - 31), z1 = liteWindCellIndex(camLookTarget.z + 29);
+    for (let cz = z0; cz <= z1; cz++) {
+      for (let cx = x0; cx <= x1; cx++) {
+        const cell = liteWindCells[cz * LITE_WIND_N + cx];
+        for (let i = 0; i < cell.length; i++) windTree(cell[i], amp0);
+      }
+    }
+  } else {
+    for (let i = 0; i < TREES.length; i++) windTree(TREES[i], amp0);
   }
   for (let i = 0; i < TREE_INSTANCED_MESHES.length; i++) {
-    TREE_INSTANCED_MESHES[i].instanceMatrix.needsUpdate = true;
+    const im = TREE_INSTANCED_MESHES[i];
+    if (LITE) {   // upload only the drawn prefix (see liteFitTreeCounts), not the whole batch
+      if (im.count === 0) continue;   // (a zero-length range would make WebGL upload the entire buffer)
+      im.instanceMatrix.clearUpdateRanges();
+      im.instanceMatrix.addUpdateRange(0, im.count * 16);
+    }
+    im.instanceMatrix.needsUpdate = true;
   }
 }
 function updateBushWind(gustEnv) {
@@ -2543,9 +2796,14 @@ let _tabHidden = false;
 // permanently freezing the scene with no recovery. Fixed by routing every
 // resume signal through one shared check of the FULL combined condition.
 let _animateRunning = false;
+// Frame bookkeeping: _liteFrame alternates LITE's 30Hz jobs (water / shadow
+// map), _liteWaterDt carries a skipped frame's time into the next water pass,
+// _framesRendered gates the one-time reveal / 'ddw:ready' (see revealWorld).
+let _liteFrame = 0, _liteWaterDt = 0, _framesRendered = 0;
 function _maybeResume() {
   if (_animateRunning || _ddwPaused || _tabHidden) return;   // still legitimately paused, or already looping
   _lastFrameTime = performance.now();   // reset the clock so the dt-clamp doesn't compress the pause into one jump-cut frame
+  if (_guardFrom) _guardFrom = performance.now() + LITE_GUARD_WARMUP_MS;   // the frame-rate guard skips the hitchy frames right after a resume
   animate();
 }
 document.addEventListener('visibilitychange', () => {
@@ -2556,6 +2814,7 @@ function animate() {
   if (_ddwPaused || _tabHidden) { _animateRunning = false; return; }   // loop halts; _maybeResume() re-invokes animate() to restart it
   _animateRunning = true;
   requestAnimationFrame(animate);
+  _liteFrame++;
   const _now = performance.now();
   // Clamp so a tab-switch/stall (rAF pauses when backgrounded) doesn't cause
   // a single huge catch-up jump on the next visible frame.
@@ -2759,7 +3018,19 @@ function animate() {
 
   // Real elapsed seconds (not dtScale) — updateWaterWake ages wake ripples in
   // actual seconds (`s.age += dt`, compared against a 1.4s lifetime).
-  updateWaterWake(dt, deerRoot.position.x, deerRoot.position.z, _gustEnv);
+  if (!LITE) {
+    updateWaterWake(dt, deerRoot.position.x, deerRoot.position.z, _gustEnv);
+  } else {
+    // LITE: the full water pass (every vertex + normals — the heaviest per-frame
+    // job in the scene) runs at 30Hz, on the frames the shadow map is NOT
+    // re-rendered, carrying the skipped frame's time along. The swell moves
+    // over seconds, so it reads the same.
+    _liteWaterDt += dt;
+    if ((_liteFrame & 1) === 1) {
+      updateWaterWake(_liteWaterDt, deerRoot.position.x, deerRoot.position.z, _gustEnv);
+      _liteWaterDt = 0;
+    }
+  }
 
   if (crownObj) {
     crownObj.grp.position.y = WATER_LEVEL + 0.30 + Math.sin(t * 1.4) * 0.04; // ride on top
@@ -2821,16 +3092,110 @@ function animate() {
     camera.lookAt(camLookTarget.x, camLookTarget.y + 0.6, camLookTarget.z);
   }
 
+  // LITE: shadow map on alternate frames (always on the first), interleaved
+  // with the water pass above so neither frame carries both.
+  if (LITE) renderer.shadowMap.needsUpdate = _liteFrame === 1 || (_liteFrame & 1) === 0;
   renderer.render(scene, camera);
+
+  // A couple of real frames are on screen (shader compile behind them). The
+  // LITE embed first runs a short pre-reveal speed check (liteGuardSample)
+  // and reveals from there; everything else reveals right away.
+  if (_framesRendered < 2 && ++_framesRendered === 2 && !(LITE && EMBED)) revealWorld();
+  if (LITE) liteGuardSample(_now, performance.now() - _now, introK);
 }
-animate();
+
+// Tell the portfolio the world is genuinely up (the touch tier waits for this
+// before swapping its shader hero out). LITE also starts the sky descent and
+// the load-veil fade here, so they play from the start once visible.
+function revealWorld() {
+  if (LITE) { _introStart = performance.now(); revealLoadVeil(); }
+  if (EMBED) { try { parent.postMessage({ type: 'ddw:ready' }, '*'); } catch (e) {} }
+}
+
+// ── LITE frame-rate guard ────────────────────────────────────────────────────
+// Phones and tablets can't be sorted into "can run this" up front — iOS exposes
+// no memory or GPU info and reports a fixed core count — so LITE measures
+// itself:
+//  0. Embedded, before it's ever shown (the portfolio keeps the world invisible
+//     until 'ddw:ready'): ~1s of frames. Far too slow → 'ddw:fallback' straight
+//     away, so a weak phone never sees the world appear and then vanish.
+//  1. Once the sky descent has landed, ~2.5s: slow, but not because of our own
+//     JavaScript, and not a rock-steady 30fps (what iOS Low Power Mode or a GPU
+//     landing on every other vsync looks like — fewer pixels wouldn't change
+//     that) → drop to 1× pixel ratio and measure again.
+//  2. Still under ~24fps → embedded, ask the portfolio to fade its shader hero
+//     back in; standalone, carry on — there's nothing lighter to swap to.
+const LITE_GUARD_WARMUP_MS = 300;    // skip frames right after compile / reveal / resume
+const LITE_GUARD_PREVIEW_MS = 1000;  // stage 0 window
+const LITE_GUARD_WINDOW_MS = 2500;   // stage 1/2 window
+const LITE_GUARD_MIN_SAMPLES = 8;
+const LITE_GUARD_OK_MS = 22;         // median frame interval needing no action (≈45fps)
+const LITE_GUARD_BAIL_MS = 42;       // median interval too slow to keep (≈24fps)
+const LITE_GUARD_CPU_MS = 14;        // our own median per-frame JS above this = CPU-bound
+let _guardStage = -1, _guardFrom = 0, _guardLastNow = 0;   // -1 = not started, 3 = done
+const _guardIntervals = [], _guardWork = [];
+function liteGuardSample(now, workMs, introK) {
+  if (_guardStage === 3 || _framesRendered < 2) return;
+  if (_guardStage === -1) _guardStage = EMBED ? 0 : 1;
+  // Main checks only measure the settled view (the descent's high camera sees more).
+  if (now < _guardFrom || (_guardStage >= 1 && introK < 1)) {
+    if (_guardStage >= 1 && introK < 1) _guardFrom = now + LITE_GUARD_WARMUP_MS;
+    _guardLastNow = now;
+    return;
+  }
+  if (!_guardFrom) { _guardFrom = now + LITE_GUARD_WARMUP_MS; _guardLastNow = now; return; }
+  _guardIntervals.push(now - _guardLastNow);
+  _guardWork.push(workMs);
+  _guardLastNow = now;
+  const windowMs = _guardStage === 0 ? LITE_GUARD_PREVIEW_MS : LITE_GUARD_WINDOW_MS;
+  if (now - _guardFrom < windowMs || _guardIntervals.length < LITE_GUARD_MIN_SAMPLES) return;
+  const median = a => a.slice().sort((p, q) => p - q)[a.length >> 1];
+  const interval = median(_guardIntervals), work = median(_guardWork);
+  _guardIntervals.length = 0; _guardWork.length = 0;
+  _guardFrom = now + LITE_GUARD_WARMUP_MS;
+  const bail = () => {
+    _guardStage = 3;
+    try { parent.postMessage({ type: 'ddw:fallback', reason: 'slow', fps: Math.round(1000 / interval) }, '*'); } catch (e) {}
+  };
+  if (_guardStage === 0) {
+    if (interval > LITE_GUARD_BAIL_MS) bail();
+    else { _guardStage = 1; revealWorld(); }
+    return;
+  }
+  const steady30 = Math.abs(interval - 1000 / 30) < 2.5;
+  if (_guardStage === 1 && interval > LITE_GUARD_OK_MS && work < LITE_GUARD_CPU_MS && !steady30 && _litePixelCap > 1) {
+    _guardStage = 2;
+    _litePixelCap = 1;
+    renderer.setPixelRatio(litePixelRatio());
+    renderer.setSize(W, H);
+    return;
+  }
+  if (EMBED && interval > LITE_GUARD_BAIL_MS) bail();
+  else _guardStage = 3;
+}
+
+// LITE: compile the scene's shaders before the first frame. Where the browser
+// supports parallel shader compilation this happens off the main thread; where
+// it doesn't, it costs the same as compiling inside the first render.
+if (LITE) { try { await renderer.compileAsync(scene, camera); } catch (e) {} }
+// (A visibilitychange during that await may already have started the loop.)
+if (!_animateRunning) animate();
 window.__DEBUG_HOOK__ = { deerRoot, wanderTarget, camLookTarget };
 
 window.addEventListener('resize', () => {
   W = window.innerWidth; H = window.innerHeight;
   camera.aspect = W / H; camera.updateProjectionMatrix();
+  if (LITE) renderer.setPixelRatio(litePixelRatio());   // the pixel budget depends on the new size
   renderer.setSize(W, H);
   computeCamReach();   // view extents depend on aspect
+  liteFitTreeCounts(); // …and so does how much of the forest can be seen (LITE)
+});
+
+// A phone can drop the GL context under memory pressure (or after a long time
+// in the background). Embedded, hand the hero back to the portfolio's shader
+// rather than leave a frozen frame.
+renderer.domElement.addEventListener('webglcontextlost', () => {
+  if (LITE && EMBED) { try { parent.postMessage({ type: 'ddw:fallback', reason: 'context-lost' }, '*'); } catch (e) {} }
 });
 
 // ── EMBED BRIDGE (portfolio hero integration) ──
@@ -2854,14 +3219,18 @@ if (new URLSearchParams(location.search).has('embed')) {
     else if (d.type === 'ddw:pause') _ddwPaused = true;
     else if (d.type === 'ddw:resume') { _ddwPaused = false; _maybeResume(); }
   });
-  // Forward pointer position, throttled to one post per frame.
-  let _ptr = null;
-  window.addEventListener('mousemove', (e) => { _ptr = { x: e.clientX, y: e.clientY }; });
-  window.addEventListener('mouseleave', () => _post({ type: 'ddw:pointerleave' }));
-  (function _pump() {
-    requestAnimationFrame(_pump);
-    if (_ptr) { _post({ type: 'ddw:pointer', x: _ptr.x, y: _ptr.y }); _ptr = null; }
-  })();
+  // Forward pointer position, throttled to one post per frame. Not on the
+  // touch tier (LITE): there's no site cursor to drive there, so no reason to
+  // run an extra rAF loop on a phone.
+  if (!LITE) {
+    let _ptr = null;
+    window.addEventListener('mousemove', (e) => { _ptr = { x: e.clientX, y: e.clientY }; });
+    window.addEventListener('mouseleave', () => _post({ type: 'ddw:pointerleave' }));
+    (function _pump() {
+      requestAnimationFrame(_pump);
+      if (_ptr) { _post({ type: 'ddw:pointer', x: _ptr.x, y: _ptr.y }); _ptr = null; }
+    })();
+  }
   // Any press on the world = "guiding" — the parent fades its title + nav out
   // and restores them after a few idle seconds.
   renderer.domElement.addEventListener('pointerdown', () => _post({ type: 'ddw:guide' }));
