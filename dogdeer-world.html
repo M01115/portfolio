@@ -3116,9 +3116,9 @@ function revealWorld() {
 // Phones and tablets can't be sorted into "can run this" up front — iOS exposes
 // no memory or GPU info and reports a fixed core count — so LITE measures
 // itself:
-//  0. Embedded, before it's ever shown (the portfolio keeps the world invisible
-//     until 'ddw:ready'): ~1s of frames. Far too slow → 'ddw:fallback' straight
-//     away, so a weak phone never sees the world appear and then vanish.
+//  0. Embedded, before the load veil lifts: ~½s of frames. Far too slow →
+//     'ddw:fallback' straight away, so a weak phone goes from the sky veil to
+//     the portfolio's shader hero without ever showing a world it can't run.
 //  1. Once the sky descent has landed, ~2.5s: slow, but not because of our own
 //     JavaScript, and not a rock-steady 30fps (what iOS Low Power Mode or a GPU
 //     landing on every other vsync looks like — fewer pixels wouldn't change
@@ -3126,7 +3126,7 @@ function revealWorld() {
 //  2. Still under ~24fps → embedded, ask the portfolio to fade its shader hero
 //     back in; standalone, carry on — there's nothing lighter to swap to.
 const LITE_GUARD_WARMUP_MS = 300;    // skip frames right after compile / reveal / resume
-const LITE_GUARD_PREVIEW_MS = 1000;  // stage 0 window
+const LITE_GUARD_PREVIEW_MS = 500;   // stage 0 window (kept short: it delays the reveal vs desktop)
 const LITE_GUARD_WINDOW_MS = 2500;   // stage 1/2 window
 const LITE_GUARD_MIN_SAMPLES = 8;
 const LITE_GUARD_OK_MS = 22;         // median frame interval needing no action (≈45fps)

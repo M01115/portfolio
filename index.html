@@ -130,10 +130,9 @@ body.deer-loading .cursor-dot, body.deer-loading .cursor-ring { display:none; }
      rendered frame; letting the browser manage compositing adaptively (as
      mrmrs does) is cheaper for a continuously-animating surface. */
 }
-/* Touch tier (phones/tablets): the world builds invisibly over the shader hero
-   and cross-fades in once it reports real frames (ddwRevealLite). */
-#ddw-hero-frame.ddw-lite { opacity:0; pointer-events:none; transition:opacity .9s ease; }
-#ddw-hero-frame.ddw-lite.ddw-shown { opacity:1; pointer-events:auto; }
+/* Touch tier only: if the world turns out too slow for the device, it fades
+   out over the shader hero that replaces it (ddwFallback). */
+#ddw-hero-frame.ddw-leaving { opacity:0; pointer-events:none; transition:opacity .9s ease; }
 /* Over the world the cursor keeps its normal round dot+ring FORM and only
    RECOLORS to the season accent (--ddw-accent) — no size morph, no pixel
    treatment. Shape/size stay identical to the site cursor; colour changes. */
@@ -3073,9 +3072,44 @@ function runDeerBoot() {
   setTimeout(() => evts.forEach(t => window.addEventListener(t, onSkip, true)), 80);
 }
 
+// ── Back button ──
+// Pages are #hashes on one document. History holds at most two of our entries:
+// home underneath, and whichever other page is showing on top — so Back from
+// any page (a project, About, or one reached from another page) lands on home,
+// and Back from home leaves the site as before. Moving between two non-home
+// pages replaces the top entry instead of stacking; going home in-page steps
+// the browser back rather than pushing a second home entry.
+let _selfBackAt = 0;   // when navigateTo itself called history.back() (its popstate is ignored)
+function syncHistory(pageId) {
+  const onPushedPage = !!(history.state && history.state.ddwPage);
+  if (pageId === 'home') {
+    // On a pushed page, navigateTo has already stepped back to the home entry
+    // (that back may still be landing) — writing now would clobber the page entry.
+    if (!onPushedPage) history.replaceState(null, '', '#home');
+  } else if (onPushedPage) {
+    history.replaceState({ ddwPage: true }, '', '#' + pageId);
+  } else {
+    // Arriving from home — or opening a project link / reloading directly — make
+    // the entry underneath home, then push this page on top of it.
+    history.replaceState(null, '', '#home');
+    history.pushState({ ddwPage: true }, '', '#' + pageId);
+  }
+}
+window.addEventListener('popstate', () => {
+  if (Date.now() - _selfBackAt < 1000 && location.hash === '#home') { _selfBackAt = 0; return; }   // our own step back — its transition is already running
+  const id = location.hash.slice(1);
+  const target = document.getElementById(id);
+  navigateTo(target && target.classList.contains('page') ? id : 'home', { fromHistory: true });
+});
+
 function navigateTo(pageId, opts) {
   const current = document.querySelector('.page.active');
   if (current && current.id === pageId) return;
+  const fromHistory = !!(opts && opts.fromHistory);
+  if (pageId === 'home' && !fromHistory && history.state && history.state.ddwPage) {
+    _selfBackAt = Date.now();
+    history.back();   // see syncHistory: keeps the stack [home, page] instead of [home, page, home]
+  }
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   if (reduced || !current || typeof gsap === 'undefined') { swapPage(pageId); return; }
 
@@ -3091,7 +3125,9 @@ function navigateTo(pageId, opts) {
   // veil takes the project's dark tone so the wipe bridges into the project hero's dark
   // gradient instead of flashing parchment-white; non-project nav stays parchment.
   veil.style.backgroundColor = (opts && opts.veilColor) || PARCHMENT;
-  const x = _lastPointer.x, y = _lastPointer.y;
+  // (a Back/Forward press has no click point — wipe from the centre)
+  const x = fromHistory ? window.innerWidth / 2 : _lastPointer.x;
+  const y = fromHistory ? window.innerHeight / 2 : _lastPointer.y;
   const R = Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y));
   const fly = (opts && opts.numEl) ? makeFlyNumber(opts.numEl, opts.veilColor ? '#F0EBE1' : null) : null;
   gsap.killTweensOf(veil);
@@ -3136,9 +3172,12 @@ function swapPage(pageId) {
   if (target) {
     target.classList.add('active');
     scrollToTop();
-    history.replaceState(null, '', '#' + pageId);
+    syncHistory(pageId);
     if (pageId === 'home') {
       requestAnimationFrame(startHero);
+      // Opened directly on a project/About (shared link, reload): the world hero
+      // was never set up at load — do it the first time home is shown.
+      if (!_homeHeroInited) { _homeHeroInited = true; ddwInit(); }
       initProjectIndex();                 // (re)build pin triggers against the now-visible home
     } else {
       killProjectIndex();                 // tear down index triggers while home is hidden
@@ -3199,44 +3238,47 @@ function ddwCheckCapable() {
 // is measured by the world itself once it's up: it drops its resolution if
 // the GPU struggles, and if it's still too slow it posts 'ddw:fallback' and
 // the shader hero comes back (ddwFallback).
+let _ddwWebGL2 = null;   // WebGL2 probe result, cached (ddwInit may ask more than once)
 function ddwCheckTouchCapable() {
   if (new URLSearchParams(location.search).has('cms')) return false;
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return false;
-  if (!window.matchMedia('(pointer:coarse)').matches) return false;
+  // A genuine touch device: coarse primary pointer, no hover, AND a touchscreen.
+  // The last one matters — the desktop check retries because some renderers
+  // misreport hover/pointer for a moment at load, but a desktop without a
+  // touchscreen still reports zero touch points, so it can't land here early.
+  if (!window.matchMedia('(pointer:coarse) and (hover:none)').matches) return false;
+  if (!(navigator.maxTouchPoints > 0)) return false;
   try { if (sessionStorage.getItem('ddw_lite_off')) return false; } catch (e) {}   // already fell back this browsing session
   if (navigator.connection && navigator.connection.saveData) return false;       // Data Saver on
   if (navigator.deviceMemory && navigator.deviceMemory < 3) return false;        // Chrome-only signal: 2GB-class phones
   // The world is an importmap + ES module (iOS Safari 16.4+); three.js r165
   // needs WebGL2. Without either it would never boot — keep the shader.
   if (!(window.HTMLScriptElement && HTMLScriptElement.supports && HTMLScriptElement.supports('importmap'))) return false;
-  try {
-    const gl = document.createElement('canvas').getContext('webgl2');
-    if (!gl) return false;
-    const lose = gl.getExtension('WEBGL_lose_context');
-    if (lose) lose.loseContext();   // free the probe context right away (phones cap live contexts)
-  } catch (e) { return false; }
-  return true;
+  if (_ddwWebGL2 === null) {
+    try {
+      const gl = document.createElement('canvas').getContext('webgl2');
+      _ddwWebGL2 = !!gl;
+      const lose = gl && gl.getExtension('WEBGL_lose_context');
+      if (lose) lose.loseContext();   // free the probe context right away (phones cap live contexts)
+    } catch (e) { _ddwWebGL2 = false; }
+  }
+  return _ddwWebGL2;
 }
 
 function ddwBuildHero() {
   const band = document.querySelector('#home .hero-band');
   if (!band || ddwFrame) return;
+  pauseHero();                                       // shader not needed once the world is the hero; free the GPU
+  const canvas = document.getElementById('hero-canvas');
+  if (canvas) canvas.style.display = 'none';
   const iframe = document.createElement('iframe');
   iframe.id = 'ddw-hero-frame';
   iframe.title = 'Dog-Deer World';
-  if (ddwLite) {
-    // Touch tier: the shader hero stays up underneath while the world builds
-    // invisibly on top; ddwRevealLite cross-fades once it reports real frames.
-    // If it never does (blocked CDN, dead network), fall back after a while.
-    iframe.className = 'ddw-lite';
-    iframe.src = 'dogdeer-world.html?embed=1&lite=1';
-    ddwReadyTimer = setTimeout(() => ddwFallback('timeout'), 25000);
-  } else {
-    pauseHero();                                       // shader not needed on desktop; free the GPU for the world
-    const canvas = document.getElementById('hero-canvas');
-    if (canvas) canvas.style.display = 'none';
-    iframe.src = 'dogdeer-world.html?embed=1';
-  }
+  // Touch tier loads exactly like desktop (the world's own sky veil covers its
+  // boot) — just in its LITE profile. If the world never reports frames
+  // (blocked CDN, dead network), fall back to the shader after a while.
+  iframe.src = ddwLite ? 'dogdeer-world.html?embed=1&lite=1' : 'dogdeer-world.html?embed=1';
+  if (ddwLite) ddwReadyTimer = setTimeout(() => ddwFallback('timeout'), 25000);
   iframe.addEventListener('load', () => {
     // world may have posted its season before our listener attached — ask again
     try { iframe.contentWindow.postMessage({ type: 'ddw:hello' }, '*'); } catch (e) {}
@@ -3256,25 +3298,11 @@ function ddwSetPaused(paused) {
   ddwFrame.contentWindow.postMessage({ type: paused ? 'ddw:pause' : 'ddw:resume' }, '*');
 }
 
-// Touch tier: the world has rendered real frames — cross-fade it in over the
-// shader hero, then stop and hide the shader once it's fully covered.
-function ddwRevealLite() {
-  if (!ddwFrame || ddwFrame.classList.contains('ddw-shown')) return;
-  clearTimeout(ddwReadyTimer);
-  ddwFrame.classList.add('ddw-shown');
-  setTimeout(() => {
-    if (!ddwFrame) return;                             // fell back in the meantime
-    pauseHero();
-    const canvas = document.getElementById('hero-canvas');
-    if (canvas) canvas.style.display = 'none';
-  }, 1000);                                            // just past the .9s opacity fade
-}
-
-// Touch tier: put the shader hero back (world too slow, lost its GL context,
-// or never came up). Remembered for the rest of the browsing session, except
-// a timeout (the network may just have been slow). The world usually decides
-// it's too slow BEFORE it's ever shown; if it was already visible, it
-// cross-fades back out over the restarted shader instead of cutting.
+// Touch tier: put the shader hero back (world too slow for the device, lost
+// its GL context, or never came up) — the only way a phone ever sees the
+// contour hero now. Remembered for the rest of the browsing session, except a
+// timeout (the network may just have been slow). The world fades out over the
+// restarted shader rather than cutting.
 function ddwFallback(reason) {
   if (!ddwLite || !ddwFrame) return;
   clearTimeout(ddwReadyTimer);
@@ -3285,12 +3313,8 @@ function ddwFallback(reason) {
   const canvas = document.getElementById('hero-canvas');
   if (canvas) canvas.style.display = '';
   startHero();
-  if (frame.classList.contains('ddw-shown')) {
-    frame.classList.remove('ddw-shown');
-    setTimeout(() => frame.remove(), 1000);
-  } else {
-    frame.remove();
-  }
+  frame.classList.add('ddw-leaving');
+  setTimeout(() => frame.remove(), 1000);
 }
 
 function ddwOnMessage(e) {
@@ -3298,7 +3322,7 @@ function ddwOnMessage(e) {
   if (!d || typeof d.type !== 'string' || d.type.slice(0, 4) !== 'ddw:') return;
   if (!ddwFrame || e.source !== ddwFrame.contentWindow) return;   // only our own world iframe
   if (d.type === 'ddw:ready') {
-    if (ddwLite) ddwRevealLite();
+    clearTimeout(ddwReadyTimer);                       // touch tier: it came up, no timeout fallback
   } else if (d.type === 'ddw:fallback') {
     ddwFallback(d.reason);
   } else if (d.type === 'ddw:season') {
@@ -3344,24 +3368,13 @@ function ddwActivate() {
   ddwObserveBand();
 }
 
-// Touch tier. The world's build runs on this page's main thread (same-origin
-// iframe), so it starts only once the "O'deer…" boot loader has finished —
-// otherwise that animation would stall mid-play on a phone. The shader hero
-// covers the wait.
+// Touch tier — same load sequence as desktop (built right away, under the
+// "O'deer…" boot loader), with the world in its LITE profile. Its build is
+// chunked so the boot loader keeps animating between chunks.
 function ddwActivateTouch() {
   ddwLite = true;
   window.addEventListener('message', ddwOnMessage);
-  const waitStart = Date.now();
-  (function whenBootDone() {
-    if (_deerBooting && Date.now() - waitStart < 8000) { setTimeout(whenBootDone, 150); return; }
-    // …and only while the hero band is actually on screen: no point spending a
-    // phone's main thread building a world for someone already reading the
-    // projects (or on another page).
-    const band = document.querySelector('#home .hero-band');
-    const r = band && band.getBoundingClientRect();
-    if (!r || r.height === 0 || r.bottom <= 0 || r.top >= window.innerHeight) { setTimeout(whenBootDone, 400); return; }
-    ddwBuildHero();
-  })();
+  ddwBuildHero();
   ddwObserveBand();
 }
 
@@ -3428,12 +3441,10 @@ function ddwInit() {
     if (ddwFrame) return;                             // already built
     ddwCapable = ddwCheckCapable();
     if (ddwCapable) { ddwActivate(); return; }
-    if (++tries < 14) { setTimeout(attempt, 200); return; }   // ~2.8s max, still imperceptible (shader is already visible meanwhile)
-    // Never read as a capable desktop through the whole window — only now try
-    // the touch tier, so a desktop whose pointer media misreports as coarse
-    // for a moment at load can't land in it. (Costs nothing on a phone: the
-    // touch tier waits out the ~2.6s boot loader anyway.)
-    if (ddwCheckTouchCapable()) ddwActivateTouch();
+    // Phones/tablets start straight away too, same as desktop (the touch check
+    // requires a real touchscreen, so a misreporting desktop can't take it).
+    if (ddwCheckTouchCapable()) { ddwActivateTouch(); return; }
+    if (++tries < 14) setTimeout(attempt, 200);       // ~2.8s max, still imperceptible (boot loader covers it)
   })();
 }
 
@@ -3442,6 +3453,7 @@ function ddwInit() {
 // position), so a reload always reveals a fresh world instance at the hero.
 if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
 window.scrollTo(0, 0);
+let _homeHeroInited = false;   // ddwInit() has run (at load on home, or on first swap to home)
 document.addEventListener('DOMContentLoaded', () => {
   window.scrollTo(0, 0);
   runDeerBoot();   // boot loading screen — plays over whatever page/hero initializes underneath
@@ -3475,7 +3487,8 @@ document.addEventListener('DOMContentLoaded', () => {
     navigateTo(hashPage);
   } else {
     startHero();
-    ddwInit();                            // decide + build the interactive world hero (capable desktop only)
+    _homeHeroInited = true;
+    ddwInit();                            // decide + build the interactive world hero (desktop, or LITE on touch)
     ddwIntroReveal();                     // hide seq now (synchronous) then cascade in — before first paint, no flash
     setTimeout(() => {
       initReveal();
