@@ -209,6 +209,7 @@ const C = {
   goldDark:    0xA8841F,
   greyHouse:   0x8A8A8E,
   greyHouseLt: 0xACACB0,
+  umbrella:    0xB8BE4A,   // chartreuse, after the Umbrella & Coat model's steel frame
   meadow:      0x5A8038,
   mint:        0x7A9887,
 };
@@ -638,7 +639,7 @@ const LAKE_BLOBS = [
 const OBJ_DEFS = [
   { pos: [-11.0, -14.0], onWater: false, make: makeTombstone, reaction: 'bow',
     label: 'Bury Your Loved Ones',
-    text: 'Only seeds and soil carried across oceans; rammed earth chunks become graves, to bury is to build.' },
+    text: 'Only seeds and soil carried across oceans; rammed earth chunks become graves: to bury is to build.' },
   { pos: [ -2.0,  1.0], onWater: true,  make: makeCrown, reaction: 'tilt',
     label: 'The Unfinished Swan',
     text: 'A pavilion of useless machines; each one interfaces the game world with the human body.' },
@@ -653,7 +654,13 @@ const OBJ_DEFS = [
     text: 'A grid calibrated to a rock; an accidental perch becomes an intentional resting place.' },
   { pos: [ 28.0, -12.0], onWater: false, make: makeGreyHouse, reaction: 'paw',
     label: 'Cities; Impractical',
-    text: 'Impractical artworks chip away at unfamiliarity; until the space belongs to the inhabitants.' },
+    text: 'Impractical artworks chip away at unfamiliarity, until the space belongs to the inhabitants.' },
+  // Umbrella & Coat (added 2026-09-29). SW shore, ~7.5 units clear of the
+  // nearest lake lobe and ~17 from the spawn point. Text mirrors index.html
+  // PROJECTS desc.
+  { pos: [-17.0, 15.0], onWater: false, make: makeUmbrella, reaction: 'tilt',
+    label: 'Umbrella & Coat',
+    text: 'Umbrellas & coats are shelters that make you adapt.' },
 ];
 const OBJS = OBJ_DEFS.map(d => ({ pos: d.pos, onWater: d.onWater }));
 const OBJ_SCALE = 2.2; // objects read bigger than the surrounding trees
@@ -1404,7 +1411,7 @@ function scatterRock(x, z) {
 const ROCKS = [];   // filled by scatterRock (the scatter loop below runs after this line)
 
 // ── Project Objects ───────────────────────────────────────────────────────────
-// Shared winter snow dusting for the 6 interactable objects — a thin flattened
+// Shared winter snow dusting for the 7 interactable objects — a thin flattened
 // box, no-op outside SEASON.snow. castShadow off (thin decorative dusting, not
 // worth the shadow-pass cost — same call made for bushes/reeds elsewhere).
 function addSnow(parent, x, y, z, sx, sy, sz, rotY = 0) {
@@ -1505,6 +1512,31 @@ function makeGreyHouse(g) {
     cap.rotation.y = Math.PI / 4; cap.position.y = 0.60;
     cap.castShadow = false;
   }
+}
+function makeUmbrella(g) {
+  // An open umbrella planted in a soil mound, leaning slightly: 8-panel
+  // canopy, thin shaft, dark rib tips and a ferrule on top.
+  const mound = mesh(new THREE.SphereGeometry(0.18, 6, 4), C.soil, g);
+  mound.scale.set(1.1, 0.28, 1.1); mound.position.y = 0.03;
+  const u = new THREE.Group();
+  u.rotation.z = 0.14;
+  g.add(u);
+  mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.66, 5), C.ink, u).position.y = 0.33;
+  const canopy = mesh(new THREE.ConeGeometry(0.42, 0.17, 8), C.umbrella, u);
+  canopy.position.y = 0.72;
+  mesh(new THREE.CylinderGeometry(0.008, 0.012, 0.08, 4), C.ink, u).position.y = 0.84;
+  for (let i = 0; i < 8; i++) {   // rib tips sit on the cone's 8 base vertices
+    const a = i * Math.PI / 4;
+    mesh(new THREE.SphereGeometry(0.014, 4, 3), C.ink, u)
+      .position.set(Math.sin(a) * 0.42, 0.635, Math.cos(a) * 0.42);
+  }
+  if (SEASON.snow) {
+    // Snow-capped canopy, same nested-cone trick as the grey house roof.
+    const cap = mesh(new THREE.ConeGeometry(0.34, 0.14, 8), 0xEEF3F4, u);
+    cap.position.y = 0.745;
+    cap.castShadow = false;
+  }
+  addSnow(g, 0, 0.075, 0, 0.32, 0.03, 0.32);   // dusting on the soil mound
 }
 
 // Build the water mesh (needs OBJS + terrain fns, all declared above).
