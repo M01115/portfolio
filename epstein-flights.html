@@ -1,0 +1,932 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flight Logs, 2006–2019 · Morris Zhang</title>
+<meta name="description" content="An interactive map and timeline of cited Jeffrey Epstein flight records, 2006–2019, asking whether the routine changed when the news broke.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preload" href="flights.json" as="fetch" crossorigin>
+<link rel="preload" href="events-2015.json" as="fetch" crossorigin>
+<!-- fonts load without blocking first paint (display=swap already shows the fallback first) -->
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&amp;family=Inter:wght@300;400;500&amp;display=swap" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&amp;family=Inter:wght@300;400;500&amp;display=swap" rel="stylesheet"></noscript>
+<style>
+:root {
+  --bg: #FFFFFF;
+  --fg: #161410;
+  --muted: #7A7169;
+  --accent: #B5876A;
+  --accent-dark: #8A5E47;
+  --border: rgba(22,20,16,0.12);
+  --land: #F1EDE6;
+  --before: #8F877E;
+  --src-logbook: #8A5E47;
+  --src-faa: #7A7169;
+  --src-adsb: #3E6B73;
+  --serif: 'DM Serif Display', Georgia, serif;
+  --body: 'Inter', system-ui, sans-serif;
+  --pad: clamp(14px, 2.2vw, 28px);
+  --card-w: 300px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  font-family: var(--body); font-size: 14px; line-height: 1.45; font-weight: 400;
+  background: var(--bg); color: var(--fg);
+  display: grid; grid-template-rows: auto 1fr auto; grid-template-columns: minmax(0, 1fr); overflow: hidden;
+}
+a { color: inherit; }
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent-dark); outline-offset: 2px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ── header ── */
+.top { display: flex; align-items: flex-start; gap: 24px; padding: var(--pad) var(--pad) 8px; }
+.titles { flex: 1; min-width: 0; }
+.back { display: inline-block; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); text-decoration: none; margin-bottom: 10px; }
+.back:hover { color: var(--fg); }
+h1 { font-family: var(--serif); font-weight: 400; font-size: clamp(26px, 3.2vw, 38px); line-height: 1.05; }
+.q { margin-top: 6px; font-size: 15px; color: var(--muted); }
+.side { display: flex; flex-direction: column; align-items: flex-end; gap: 10px; padding-top: 4px; }
+.legend { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+.legend .lg { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.legend svg { display: block; }
+.text-btn { white-space: nowrap; font-size: 12px; text-decoration: underline; text-underline-offset: 3px; color: var(--muted); }
+.text-btn:hover { color: var(--fg); }
+
+/* ── map stage ── */
+.stage { position: relative; min-height: 0; }
+.map-wrap { position: absolute; inset: 0; }
+#map { display: block; width: 100%; height: 100%; touch-action: manipulation; }
+.fit { position: absolute; left: var(--pad); bottom: 10px; font-size: 12px; color: var(--muted); border: 1px solid var(--border); background: var(--bg); padding: 4px 10px; }
+.fit:hover { color: var(--fg); }
+.readout {
+  position: absolute; z-index: 5; pointer-events: none; max-width: 260px;
+  background: var(--bg); border: 1px solid var(--fg); padding: 10px 12px; font-size: 12px;
+}
+.readout h3 { font-size: 13px; font-weight: 500; margin-bottom: 4px; }
+.readout .sec { margin-top: 6px; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.readout ul { list-style: none; }
+.readout li { color: var(--fg); }
+.readout .more { color: var(--muted); }
+
+/* ── card ── */
+.card {
+  position: absolute; z-index: 4; top: 8px; right: var(--pad); width: var(--card-w);
+  background: var(--bg); border: 1px solid var(--fg); padding: 16px 18px 14px;
+  max-height: calc(100% - 16px); overflow: auto;
+}
+.kicker { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.kicker .pin { color: var(--accent-dark); }
+.card h2 { font-size: 16px; font-weight: 500; line-height: 1.3; margin: 6px 0 6px; }
+.card .body { font-size: 13px; color: var(--fg); }
+.counts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 14px 0 10px; }
+.counts b { display: block; font-family: var(--serif); font-weight: 400; font-size: 34px; line-height: 1; }
+.counts span { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 11px; color: var(--muted); }
+.sw { display: inline-block; width: 18px; height: 6px; border-radius: 3px; }
+.sw.before { background: var(--before); }
+.sw.after { height: 2px; background: var(--fg); }
+.sentence { font-size: 13px; }
+.more-info { margin-top: 8px; font-size: 13px; }
+.more-info summary { cursor: pointer; color: var(--muted); }
+.more-info summary:hover { color: var(--fg); }
+.more-info .body { margin-top: 4px; }
+.src-link { display: inline-block; margin-top: 10px; font-size: 13px; text-underline-offset: 3px; }
+.foot { margin-top: 8px; font-size: 11px; color: var(--muted); }
+.card-nav { display: flex; justify-content: space-between; gap: 8px; margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 12px; }
+.card-nav button:hover, .close:hover { text-decoration: underline; text-underline-offset: 3px; }
+.close { float: right; font-size: 12px; color: var(--muted); margin: -4px -6px 0 8px; padding: 2px 6px; }
+.annot { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
+.news-list { list-style: none; margin-top: 6px; }
+.news-list li + li { margin-top: 2px; }
+.news-list button { text-align: left; font-size: 13px; }
+.news-list button:hover { text-decoration: underline; text-underline-offset: 3px; }
+.diamond { display: inline-block; width: 8px; height: 8px; transform: rotate(45deg); background: var(--accent); margin-right: 8px; vertical-align: 1px; }
+.diamond.hollow { background: none; border: 1.5px solid var(--accent); }
+
+/* ── timeline ── */
+.timeline { border-top: 1px solid var(--border); padding: 8px var(--pad) 10px; user-select: none; }
+.controls { display: flex; align-items: center; gap: 14px; font-size: 12px; color: var(--muted); margin-bottom: 6px; flex-wrap: wrap; }
+.controls button { color: var(--fg); }
+.controls button:hover { text-decoration: underline; text-underline-offset: 3px; }
+.controls .win { margin-left: auto; color: var(--fg); }
+#year-pick { font: inherit; font-size: 12px; border: 1px solid var(--border); background: var(--bg); padding: 2px 4px; }
+.strip { position: relative; cursor: ew-resize; touch-action: none; }
+.strip svg { display: block; width: 100%; overflow: visible; }
+.strip .year-pos { position: absolute; top: 0; width: 2px; margin-left: -1px; background: var(--accent-dark); pointer-events: none; }
+#overview { cursor: pointer; }
+.strip .win-shade { position: absolute; top: 0; background: rgba(181,135,106,.16); border-right: 2px solid var(--fg); pointer-events: none; }
+.strip .win-before { position: absolute; top: 0; background: rgba(143,135,126,.28); pointer-events: none; }
+.strip .win-after { position: absolute; top: 0; border: 1px solid var(--fg); pointer-events: none; }
+.strip-label { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 6px 0 2px; }
+.coverage { position: relative; height: 22px; margin-top: 2px; font-size: 10px; color: var(--muted); }
+.coverage .cov { position: absolute; height: 10px; display: flex; align-items: center; }
+.coverage .cov span { position: absolute; left: 0; top: 9px; white-space: nowrap; }
+.lane-events { position: absolute; left: 0; right: 0; top: 0; height: 0; pointer-events: none; }
+.lane-events .ev { position: absolute; top: -2px; width: 12px; height: 12px; margin-left: -6px; pointer-events: auto; display: grid; place-items: center; }
+.lane-events .ev i { width: 8px; height: 8px; transform: rotate(45deg); background: var(--accent); }
+.lane-events .ev.flight i { width: 6px; height: 6px; background: var(--bg); border: 1.5px solid var(--accent); }
+.lane-events .ev.on i { outline: 2px solid var(--fg); outline-offset: 1px; }
+.chips { display: flex; gap: 6px; margin-top: 8px; overflow-x: auto; scrollbar-width: thin; padding-bottom: 2px; }
+.chips button { position: relative; flex: none; font-size: 12px; border: 1px solid var(--border); padding: 3px 8px; white-space: nowrap; }
+.chips button:hover { border-color: var(--fg); }
+.chips button[aria-pressed="true"] { border-color: var(--fg); background: var(--fg); color: var(--bg); }
+.chips button[aria-pressed="true"] .diamond.hollow { border-color: var(--bg); }
+
+/* ── about drawer ── */
+dialog.about {
+  margin: 0 0 0 auto; height: 100%; max-height: 100%; width: min(520px, 100%); border: 0; border-left: 1px solid var(--fg);
+  padding: 28px 28px 40px; background: var(--bg); color: var(--fg); overflow: auto;
+}
+dialog.about::backdrop { background: rgba(22,20,16,.25); }
+.about h2 { font-family: var(--serif); font-weight: 400; font-size: 26px; margin-bottom: 14px; }
+.about h3 { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 400; margin: 20px 0 6px; }
+.about p, .about li { font-size: 13px; }
+.about ul { padding-left: 18px; }
+.about li + li { margin-top: 3px; }
+.about table { border-collapse: collapse; font-size: 13px; margin-top: 4px; }
+.about td { padding: 2px 14px 2px 0; }
+.about td.n { text-align: right; font-variant-numeric: tabular-nums; }
+.about .close { position: sticky; top: 0; }
+
+.error { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; gap: 10px; padding: 24px; }
+
+/* ── phone (LITE) ── */
+@media (max-width: 767px) {
+  body { grid-template-rows: auto auto auto; overflow: auto; height: auto; }
+  .top { flex-direction: column; gap: 8px; padding-top: 12px; padding-bottom: 4px; }
+  .back { margin-bottom: 6px; }
+  .q { margin-top: 4px; font-size: 14px; }
+  .side { flex-direction: row; align-items: center; justify-content: space-between; width: 100%; }
+  .legend { flex-direction: row; flex-wrap: wrap; gap: 4px 12px; font-size: 11px; }
+  .side { align-items: flex-start; gap: 12px; }
+  .controls .win { display: none; }
+  .card { padding: 12px 14px 10px; }
+  .card h2 { font-size: 15px; }
+  .counts { margin: 8px 0 6px; }
+  .counts b { font-size: 28px; }
+  .stage { display: flex; flex-direction: column; }
+  .map-wrap { position: relative; inset: auto; height: 52vh; min-height: 300px; }
+  .card { position: static; z-index: auto; width: auto; max-height: none; margin: 0 var(--pad) 8px; }
+  .overview-block { display: none; }
+  .timeline { position: sticky; bottom: 0; z-index: 6; background: var(--bg); }
+  .map-wrap { height: 40vh; min-height: 260px; }
+}
+@media (min-width: 768px) { .phone-only { display: none !important; } }
+
+/* ── ?teaser=1: the looping Jan 2 comparison embedded on the project page (no controls, clicks pass to the parent link) ── */
+body.teaser { grid-template-rows: 1fr; pointer-events: none; }
+body.teaser .top, body.teaser .timeline, body.teaser .card, body.teaser .fit { display: none; }
+body.teaser .stage { display: block; }
+body.teaser .map-wrap { position: absolute; inset: 0; height: auto; min-height: 0; }
+.teaser-cap { display: none; }
+body.teaser .teaser-cap { display: flex; gap: 14px; align-items: center; position: absolute; left: 16px; bottom: 12px; font-size: 12px; color: var(--muted); background: rgba(255,255,255,.85); padding: 4px 8px; }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="titles">
+    <a class="back" href="index.html#project-epstein">← Epstein Flight Logs</a>
+    <h1>Flight Logs, 2006–2019</h1>
+    <p class="q">Did the routine break when the news did?</p>
+  </div>
+  <div class="side">
+    <div class="legend" id="legend" aria-label="Legend"></div>
+    <button class="text-btn" id="about-btn" aria-haspopup="dialog">About the data</button>
+  </div>
+</header>
+
+<main class="stage">
+  <div class="map-wrap" id="map-wrap">
+    <canvas id="map" role="img" aria-label="Flight map"></canvas>
+    <div class="readout" id="readout" hidden></div>
+    <button class="fit" id="fit-btn" title="Re-frame the map to the flights in view">Fit</button>
+    <div class="teaser-cap" id="teaser-cap" aria-hidden="true"></div>
+  </div>
+  <aside class="card" id="card" aria-live="polite"></aside>
+</main>
+
+<section class="timeline" aria-label="Timeline">
+  <div class="controls">
+    <button id="play" aria-label="Play from here">▶ Play</button>
+    <button id="speed" aria-label="Playback speed">1×</button>
+    <label class="phone-only">Year <select id="year-pick" aria-label="Year"></select></label>
+    <span class="win" id="win-label"></span>
+  </div>
+  <div class="overview-block">
+    <div class="strip" id="overview" role="slider" tabindex="0" aria-label="Year, 2006 to 2019. Arrow keys change the year."></div>
+    <div class="coverage" id="coverage" aria-hidden="true"></div>
+  </div>
+  <div class="strip-label" id="lane-label">12 months</div>
+  <div class="strip" id="lane" role="slider" tabindex="0" aria-label="Months of the selected year. Arrow keys move one day, Shift plus arrow one week."></div>
+  <div class="chips" id="chips" role="group" aria-label="2015 events"></div>
+</section>
+
+<dialog class="about" id="about" aria-labelledby="about-title">
+  <button class="close" id="about-close">× Close</button>
+  <h2 id="about-title">About the data</h2>
+  <div id="about-body"></div>
+</dialog>
+
+<div class="sr-only"><table id="sr-table"><caption>Flights in the 4 weeks before and after each news event</caption><thead><tr><th>Event</th><th>Date</th><th>Before</th><th>After</th><th>Routes in both</th></tr></thead><tbody></tbody></table></div>
+
+<script src="vendor/d3-array.min.js"></script>
+<script src="vendor/d3-geo.min.js"></script>
+<script src="vendor/topojson-client.min.js"></script>
+<script>
+'use strict';
+/* Design doc: C:\Users\13693\.gstack\projects\skills\13693-unknown-design-epstein-flights.md
+   Decisions referenced as R1–R19. Windows are half-open: scrubber [t−28d, t), ghost [e−28d, e) and [e, e+28d). */
+
+// ───────────────────────── pure logic (exposed on window.FL for tests) ─────────────────────────
+const FL = window.FL = {};
+const DAY = 864e5, WINDOW = 28;
+const T_MIN = '2006-01-02', T_MAX = '2020-01-01';
+const PRECEDENCE = ['logbook', 'faa', 'adsb'];
+const SRC = {
+  logbook: { label: 'Pilot logbook', color: '#8A5E47', dash: [] },
+  faa:     { label: 'FAA records',   color: '#7A7169', dash: [7, 4] },
+  adsb:    { label: 'ADS-B',         color: '#3E6B73', dash: [1.5, 3] },
+};
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+FL.parse = s => Date.UTC(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10));
+FL.iso = ms => new Date(ms).toISOString().slice(0, 10);
+FL.addDays = (s, n) => FL.iso(FL.parse(s) + n * DAY);
+FL.clampT = t => t < T_MIN ? T_MIN : t > T_MAX ? T_MAX : t;
+FL.fmt = (s, withYear = true) => `${MONTHS[+s.slice(5, 7) - 1]} ${+s.slice(8, 10)}${withYear ? ', ' + s.slice(0, 4) : ''}`;
+FL.fmtRange = (a, b) => `${FL.fmt(a, a.slice(0, 4) !== FL.addDays(b, -1).slice(0, 4))} – ${FL.fmt(FL.addDays(b, -1))}`;  // [a,b) → shows last included day
+
+// flights sorted by date → binary search for [a, b)
+FL.lowerBound = (flights, s) => { let lo = 0, hi = flights.length; while (lo < hi) { const m = (lo + hi) >> 1; if (flights[m].date < s) lo = m + 1; else hi = m; } return lo; };
+FL.window = (flights, a, b) => flights.slice(FL.lowerBound(flights, a), FL.lowerBound(flights, b));
+
+FL.routes = flights => {
+  const m = new Map();
+  for (const f of flights) {
+    const key = f.o + '>' + f.d;
+    let r = m.get(key);
+    if (!r) m.set(key, r = { key, o: f.o, d: f.d, flights: [], bySrc: {} });
+    r.flights.push(f);
+    for (const s of f.sources) r.bySrc[s] = (r.bySrc[s] || 0) + 1;
+  }
+  return [...m.values()];
+};
+// R10: style of the source with the most flights; tie → logbook > FAA > ADS-B
+FL.majoritySource = r => PRECEDENCE.filter(s => r.bySrc[s]).sort((a, b) => r.bySrc[b] - r.bySrc[a] || PRECEDENCE.indexOf(a) - PRECEDENCE.indexOf(b))[0];
+
+FL.compare = (flights, e) => {
+  const before = FL.window(flights, FL.addDays(e, -WINDOW), e);
+  const after = FL.window(flights, e, FL.addDays(e, WINDOW));
+  const m = new Map();
+  const add = (list, side) => { for (const f of list) { const k = f.o + '>' + f.d; let r = m.get(k); if (!r) m.set(k, r = { key: k, o: f.o, d: f.d, before: [], after: [] }); r[side].push(f); } };
+  add(before, 'before'); add(after, 'after');
+  const routes = [...m.values()];
+  return { before, after, routes, shared: routes.filter(r => r.before.length && r.after.length).length };
+};
+
+// The top strip selects a year; the lane below scrubs within it. "The year" is the one holding the window's last day.
+FL.yearOfT = t => +FL.addDays(t, -1).slice(0, 4);
+FL.yearBounds = y => ({ min: `${y}-01-02`, max: `${y + 1}-01-01` });   // t values whose last day falls in year y
+// Lane = the calendar year plus a 4-week lead-in, so a window that starts in the previous December (Jan 2 pin) stays visible.
+FL.laneRange = y => [FL.addDays(`${y}-01-01`, -WINDOW), `${y + 1}-01-01`];
+// Same point in another year (Feb 29 → Feb 28).
+FL.moveToYear = (t, y) => {
+  let md = FL.addDays(t, -1).slice(5);
+  if (md === '02-29' && !(y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0))) md = '02-28';
+  return FL.clampT(FL.addDays(`${y}-${md}`, 1));
+};
+// Play runs from the scrubber through the following years and stops at the end of 2019 (restarts at 2006 if already there).
+FL.playRange = t => ({ start: t >= T_MAX ? T_MIN : t, end: T_MAX });
+FL.parseHash = (hash, events) => {
+  const m = /^#(event|t)=([\w-]+)$/.exec(hash || '');
+  if (m && m[1] === 'event' && events.some(e => e.id === m[2])) return { event: m[2] };
+  if (m && m[1] === 't' && /^\d{4}-\d{2}-\d{2}$/.test(m[2]) && !isNaN(FL.parse(m[2]))) return { t: FL.clampT(m[2]) };
+  return null;
+};
+FL.sourceNote = flights => {
+  const s = new Set(flights.flatMap(f => f.sources));
+  const names = PRECEDENCE.filter(k => s.has(k)).map(k => SRC[k].label === 'FAA records' ? 'FAA' : SRC[k].label.toLowerCase());
+  if (!names.length) return 'no flights on file';
+  return names.length === 1 ? `${names[0] === 'FAA' ? 'FAA records' : names[0].replace(/^./, c => c.toUpperCase())} only` : `Sources: ${names.join(', ')}`;
+};
+FL.plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+
+// quadratic arc between projected points; bows to the left of travel, so A→B and B→A separate
+FL.arcGeom = (p0, p1) => {
+  const dx = p1[0] - p0[0], dy = p1[1] - p0[1], len = Math.hypot(dx, dy) || 1, bow = Math.min(len * 0.18, 120);
+  const c = [(p0[0] + p1[0]) / 2 + dy / len * bow, (p0[1] + p1[1]) / 2 - dx / len * bow];
+  return { p0, c, p1 };
+};
+FL.splitArc = (g, u) => u >= 1 ? g : { p0: g.p0, c: [g.p0[0] + (g.c[0] - g.p0[0]) * u, g.p0[1] + (g.c[1] - g.p0[1]) * u], p1: FL.arcPoint(g, u) };  // first u of the curve
+FL.arcPoint = (g, t) => { const u = 1 - t; return [u * u * g.p0[0] + 2 * u * t * g.c[0] + t * t * g.p1[0], u * u * g.p0[1] + 2 * u * t * g.c[1] + t * t * g.p1[1]]; };
+FL.distToArc = (g, x, y) => {
+  let best = Infinity, prev = g.p0;
+  for (let i = 1; i <= 24; i++) {
+    const p = FL.arcPoint(g, i / 24), vx = p[0] - prev[0], vy = p[1] - prev[1], L = vx * vx + vy * vy || 1;
+    const k = Math.max(0, Math.min(1, ((x - prev[0]) * vx + (y - prev[1]) * vy) / L));
+    best = Math.min(best, Math.hypot(x - prev[0] - k * vx, y - prev[1] - k * vy));
+    prev = p;
+  }
+  return best;
+};
+
+// ───────────────────────── page ─────────────────────────
+const $ = s => document.querySelector(s);
+const canvas = $('#map'), ctx = canvas.getContext('2d');
+const mqPhone = matchMedia('(max-width: 767px)');
+const mqReduce = matchMedia('(prefers-reduced-motion: reduce)');
+const SHORT = { TEB: 'Teterboro', PBI: 'Palm Beach', STT: 'St. Thomas', BED: 'Hanscom Field', ABQ: 'Albuquerque', LBG: 'Paris Le Bourget',
+  JFK: 'New York JFK', EWR: 'Newark', ISP: 'Islip', LFBG: 'Cognac', LPAZ: 'Santa Maria, Azores', LSJ: 'Little St. James', SBGR: 'São Paulo',
+  SAF: 'Santa Fe', PHX: 'Phoenix', BOS: 'Boston', SJC: 'San Jose', BUR: 'Burbank', BQK: 'Brunswick', LTN: 'London Luton', STN: 'London Stansted',
+  MIA: 'Miami', IAD: 'Washington Dulles', DCA: 'Washington National', CNM: 'Carlsbad', ASE: 'Aspen', LFMN: 'Nice', GVAC: 'Sal, Cape Verde',
+  BAF: 'Westfield', SAV: 'Savannah', BGR: 'Bangor', HPN: 'Westchester', YUL: 'Montréal', MVY: "Martha's Vineyard", FLL: 'Fort Lauderdale', DAB: 'Daytona Beach', CMH: 'Columbus' };
+
+let D = null;           // { flights, airports, years, sparse, sources, dropped }
+let EVENTS = [], NEWS = [], DEFAULT_ID = null;
+let land = null;
+const S = { t: '2015-01-02', pinned: null, year: 2015, playing: false, speed: 1, hover: null };
+const TEASER = new URLSearchParams(location.search).has('teaser');
+const TP = { b: 1, a: 1 };   // teaser progress for the before / after arcs (1 = fully drawn)
+let W = 0, H = 0, DPR = 1;
+const projection = d3.geoConicEqualArea().parallels([20, 50]).rotate([70, 0]);
+let view = null, viewAnim = null, geomCache = [];
+const landCache = { canvas: null, view: null, sizeKey: '' };
+
+const short = id => SHORT[id] || (D.airports[id] ? D.airports[id][0].split(',')[0].replace(/\b(International|Regional|Municipal|County)?\s*(Airport|Field)\b.*$/, '').trim() : id);
+
+async function load() {
+  const json = u => fetch(u).then(r => { if (!r.ok) throw new Error(u + ' ' + r.status); return r.json(); });
+  const landP = json('land-50m.json').catch(() => null);   // in parallel; a failure only loses the coastline
+  try {
+    const [fl, ev] = await Promise.all([json('flights.json'), json('events-2015.json')]);
+    D = fl;
+    D.flights = fl.flights.map(([date, o, d, tails, sources]) => ({ date, o, d, tails, sources }));
+    EVENTS = ev.events; DEFAULT_ID = ev.default;
+    NEWS = EVENTS.filter(e => e.type !== 'flight');
+  } catch (err) {
+    document.querySelector('.stage').innerHTML = `<div class="error"><p>The flight data didn't load (${String(err.message).replace(/[<>&]/g, '')}).</p><p><a href="index.html#project-epstein">← Back to the project</a></p></div>`;
+    return;
+  }
+  const topo = await landP;
+  land = topo ? topojson.feature(topo, topo.objects.land) : null;   // arcs still draw on a plain background
+  init();
+}
+
+function init() {
+  buildLegend(); buildAbout(); buildSrTable(); buildChips(); buildYearPick();
+  if (TEASER) { document.body.classList.add('teaser'); resize(false); pin(DEFAULT_ID, { instant: true, keepHash: true }); bind(); startTeaser(); return; }
+  const h = FL.parseHash(location.hash, EVENTS);
+  resize(false);
+  if (h && h.t) { S.t = h.t; S.year = FL.yearOfT(h.t); buildStrips(); view = fitView(currentFitPoints()); }
+  else pin(h && h.event || DEFAULT_ID, { instant: true, keepHash: !!h });
+  bind();
+  render();
+}
+
+// ── views & fitting (R7) ──
+function fitView(points) {
+  const cardW = mqPhone.matches || TEASER ? 0 : 300 + 24;
+  const padX = W * 0.1, padY = H * 0.1;
+  const ext = [[padX, padY], [Math.max(padX + 50, W - padX - cardW), H - padY]];
+  let pts = points;
+  if (!pts.length) pts = ['TEB', 'PBI', 'STT', 'ABQ', 'LBG'].map(id => D.airports[id]).map(a => [a[2], a[1]]);  // default Atlantic frame
+  // never zoom tighter than ~16° × 9° so a short hop still has context
+  const lons = pts.map(p => p[0]), lats = pts.map(p => p[1]);
+  const cx = (Math.min(...lons) + Math.max(...lons)) / 2, cy = (Math.min(...lats) + Math.max(...lats)) / 2;
+  const box = [[Math.min(Math.min(...lons), cx - 8), Math.min(Math.min(...lats), cy - 4.5)], [Math.max(Math.max(...lons), cx + 8), Math.max(Math.max(...lats), cy + 4.5)]];
+  const p = d3.geoConicEqualArea().parallels([20, 50]).rotate([70, 0]).fitExtent(ext, { type: 'MultiPoint', coordinates: [...pts, ...box] });
+  return { k: p.scale(), x: p.translate()[0], y: p.translate()[1] };
+}
+function pointsOf(flights) { const s = new Set(); flights.forEach(f => { s.add(f.o); s.add(f.d); }); return [...s].map(id => [D.airports[id][2], D.airports[id][1]]); }
+function currentFitPoints() {
+  if (S.pinned) { const e = EVENTS.find(x => x.id === S.pinned); return pointsOf(FL.window(D.flights, FL.addDays(e.date, -WINDOW), FL.addDays(e.date, WINDOW))); }
+  return pointsOf(FL.window(D.flights, FL.addDays(S.t, -WINDOW), S.t));
+}
+function refit(points, instant) {
+  const target = fitView(points);
+  if (instant || mqReduce.matches || !view) { view = target; viewAnim = null; render(); return; }
+  viewAnim = { from: { ...view }, to: target, t0: performance.now(), dur: 600 };
+  tick();
+}
+let rafId = 0;
+function tick() { if (!rafId) rafId = requestAnimationFrame(frame); }
+function frame(now) {
+  rafId = 0;
+  if (viewAnim) {
+    const a = viewAnim, u = Math.min(1, (now - a.t0) / a.dur), e = u < .5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2;
+    // interpolate scale geometrically so zooms feel even
+    view = { k: a.from.k * Math.pow(a.to.k / a.from.k, e), x: a.from.x + (a.to.x - a.from.x) * e, y: a.from.y + (a.to.y - a.from.y) * e };
+    if (u >= 1) viewAnim = null;
+  }
+  if (S.playing) stepPlay(now);
+  drawMap();
+  if (viewAnim || S.playing) tick();
+}
+function render() { drawMap(); drawStrips(); drawCard(); updateChips(); }
+
+// ── teaser loop: before arcs grow (0–1.6 s), after arcs grow (1.6–3.2 s), hold, repeat every 6 s ──
+// Pauses when the parent page says it scrolled away ({flTeaser:'pause'|'play'}) or the tab is hidden.
+// Reduced motion: the finished frame only (which is also the poster).
+function startTeaser() {
+  const e = EVENTS.find(x => x.id === DEFAULT_ID), c = FL.compare(D.flights, e.date);
+  $('#teaser-cap').innerHTML = `<span><i class="sw before"></i> 4 weeks before ${FL.fmt(e.date)}: ${c.before.length}</span><span><i class="sw after"></i> 4 weeks after: ${c.after.length}</span>`;
+  if (mqReduce.matches || new URLSearchParams(location.search).has('still')) { drawMap(); return; }
+  let paused = false, t0 = performance.now(), pausedAt = 0;
+  const ease = u => 1 - Math.pow(1 - Math.max(0, Math.min(1, u)), 3);
+  const loop = now => {
+    if (paused) return;
+    const s = ((now - t0) / 1000) % 6;
+    TP.b = ease(s / 1.6); TP.a = ease((s - 1.6) / 1.6);
+    drawMap();
+    requestAnimationFrame(loop);
+  };
+  const setPaused = p => {
+    if (p === paused) return;
+    paused = p;
+    if (p) pausedAt = performance.now(); else { t0 += performance.now() - pausedAt; requestAnimationFrame(loop); }
+  };
+  window.addEventListener('message', ev => { if (ev.data && ev.data.flTeaser) setPaused(ev.data.flTeaser === 'pause'); });
+  document.addEventListener('visibilitychange', () => setPaused(document.hidden));
+  requestAnimationFrame(loop);
+}
+
+// ── map drawing ──
+function resize(redraw = true) {
+  const r = canvas.getBoundingClientRect();
+  DPR = Math.min(window.devicePixelRatio || 1, 2); W = Math.max(1, r.width); H = Math.max(1, r.height);
+  canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR);
+  if (redraw) { view = fitView(currentFitPoints()); buildStrips(); render(); }
+}
+function proj(id) { const a = D.airports[id]; return projection([a[2], a[1]]); }
+function drawMap() {
+  if (!view) return;
+  projection.scale(view.k).translate([view.x, view.y]);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  if (land) drawLand();
+  geomCache = [];
+  const touched = new Map();
+  const touch = (id, n) => touched.set(id, (touched.get(id) || 0) + n);
+  const labels = [];
+  if (S.pinned) {
+    const e = EVENTS.find(x => x.id === S.pinned), cmp = FL.compare(D.flights, e.date);
+    for (const r of cmp.routes) {
+      const g = FL.arcGeom(proj(r.o), proj(r.d));
+      geomCache.push({ g, r });
+      touch(r.o, r.before.length + r.after.length); touch(r.d, r.before.length + r.after.length);
+    }
+    // R9: before = warm-gray halo underneath, after = ink core on top; width does not scale while pinned.
+    // The teaser grows the "before" arcs, then the "after" arcs (TP.b / TP.a run 0 → 1).
+    for (const { g, r } of geomCache) if (r.before.length && TP.b > 0) strokeArc(FL.splitArc(g, TP.b), '#8F877E', 6, [], 1);
+    for (const { g, r } of geomCache) if (r.after.length && TP.a > 0) strokeArc(FL.splitArc(g, TP.a), '#161410', 2, [], 1);
+    if (!TEASER) for (const { g, r } of geomCache) labels.push({ p: FL.arcPoint(g, .5), text: `${r.before.length}→${r.after.length}` });
+  } else {
+    const a = FL.addDays(S.t, -WINDOW), list = FL.window(D.flights, a, S.t), tMs = FL.parse(S.t);
+    for (const r of FL.routes(list)) {
+      const g = FL.arcGeom(proj(r.o), proj(r.d)), n = r.flights.length, src = FL.majoritySource(r);
+      const age = (tMs - FL.parse(r.flights[n - 1].date)) / DAY;        // newest flight on the route sets its fade
+      const alpha = 0.3 + 0.7 * (1 - age / WINDOW);
+      strokeArc(g, SRC[src].color, n >= 5 ? 3 : 1 + (n - 1) * 0.5, SRC[src].dash, alpha);
+      geomCache.push({ g, r });
+      touch(r.o, n); touch(r.d, n);
+      if (n >= 3) labels.push({ p: FL.arcPoint(g, .5), text: String(n) });
+    }
+  }
+  // airports + labels (largest first, skip collisions)
+  const placed = [];
+  ctx.font = '500 11px Inter, system-ui, sans-serif'; ctx.textBaseline = 'middle';
+  for (const [id] of [...touched].sort((x, y) => y[1] - x[1])) {
+    const [x, y] = proj(id);
+    ctx.beginPath(); ctx.arc(x, y, 2.6, 0, 7); ctx.fillStyle = '#161410'; ctx.fill();
+    const text = short(id), w = ctx.measureText(text).width, box = [x + 6, y - 7, x + 6 + w, y + 7];
+    if (placed.length < 14 && !placed.some(b => b[0] < box[2] && box[0] < b[2] && b[1] < box[3] && box[1] < b[3]) && box[2] < W && box[0] > 0) {
+      placed.push(box); haloText(text, x + 6, y, '#161410');
+    }
+  }
+  ctx.font = '500 11px Inter, system-ui, sans-serif'; ctx.textAlign = 'center';
+  for (const l of labels) haloText(l.text, l.p[0], l.p[1], S.pinned ? '#8A5E47' : '#161410');
+  ctx.textAlign = 'start';
+  canvas.setAttribute('aria-label', mapLabel());
+}
+// The coastline is the expensive part (~50 ms at 4× CPU). It is rendered into a cache with a half-screen margin and
+// reused: while a re-frame animates, the cached image is scaled/shifted (the projection only changes scale and
+// translate, so that is exact); once the view settles it is re-rendered crisp.
+function drawLand() {
+  const c = landCache, sizeKey = `${W}|${H}|${DPR}`;
+  const stale = !c.view || c.sizeKey !== sizeKey || c.view.k !== view.k || c.view.x !== view.x || c.view.y !== view.y;
+  if (!c.canvas || c.sizeKey !== sizeKey || (stale && !viewAnim)) {
+    const lc = c.canvas || (c.canvas = document.createElement('canvas'));
+    lc.width = Math.round(2 * W * DPR); lc.height = Math.round(2 * H * DPR);
+    const lx = lc.getContext('2d');
+    lx.setTransform(DPR, 0, 0, DPR, DPR * W / 2, DPR * H / 2);   // margin of W/2, H/2 on every side
+    lx.beginPath(); d3.geoPath(projection, lx)(land);
+    lx.fillStyle = '#F1EDE6'; lx.fill();
+    c.view = { ...view }; c.sizeKey = sizeKey;
+  }
+  const s = view.k / c.view.k, dx = view.x - s * c.view.x, dy = view.y - s * c.view.y;
+  ctx.setTransform(DPR * s, 0, 0, DPR * s, DPR * dx, DPR * dy);
+  ctx.drawImage(c.canvas, -W / 2, -H / 2, 2 * W, 2 * H);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+function strokeArc(g, color, width, dash, alpha) {
+  ctx.globalAlpha = alpha; ctx.strokeStyle = color; ctx.lineWidth = width; ctx.lineCap = 'round'; ctx.setLineDash(dash);
+  ctx.beginPath(); ctx.moveTo(g.p0[0], g.p0[1]); ctx.quadraticCurveTo(g.c[0], g.c[1], g.p1[0], g.p1[1]); ctx.stroke();
+  ctx.setLineDash([]); ctx.globalAlpha = 1;
+}
+function haloText(text, x, y, color) {
+  ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,255,255,.92)'; ctx.lineJoin = 'round'; ctx.strokeText(text, x, y);
+  ctx.fillStyle = color; ctx.fillText(text, x, y);
+}
+function mapLabel() {
+  if (S.pinned) {
+    const e = EVENTS.find(x => x.id === S.pinned), c = FL.compare(D.flights, e.date);
+    return `Map comparing the 4 weeks before and after ${FL.fmt(e.date)}: ${FL.plural(c.before.length, 'flight')} before, ${c.after.length} after, ${c.shared} of ${FL.plural(c.routes.length, 'route')} flown in both.`;
+  }
+  const list = FL.window(D.flights, FL.addDays(S.t, -WINDOW), S.t);
+  return `Map of flights ${FL.fmtRange(FL.addDays(S.t, -WINDOW), S.t)}: ${FL.plural(list.length, 'flight')} on ${FL.plural(FL.routes(list).length, 'route')}.`;
+}
+
+// ── readout (R14, R10) ──
+function pick(x, y, touch) {
+  const tol = touch ? 14 : 6;   // closest route wins; others under the pointer are listed as "Also here"
+  const hits = geomCache.map(c => ({ c, d: FL.distToArc(c.g, x, y) })).filter(h => h.d <= tol).sort((a, b) => a.d - b.d);
+  return hits.length ? { ...hits[0].c, others: hits.slice(1, 3).map(h => h.c.r) } : null;
+}
+const srcName = s => SRC[s].label;
+function dateList(flights) {
+  const show = flights.slice(0, 5).map(f => `<li>${FL.fmt(f.date)} · ${f.sources.map(srcName).join(' + ')}</li>`).join('');
+  return `<ul>${show}${flights.length > 5 ? `<li class="more">+${flights.length - 5} more</li>` : ''}</ul>`;
+}
+function showReadout(hit, x, y) {
+  const el = $('#readout');
+  if (!hit) { el.hidden = true; return; }
+  const r = hit.r, title = `${short(r.o)} → ${short(r.d)}`;
+  if (S.pinned) {
+    el.innerHTML = `<h3>${title}</h3><div class="sec">Before (${r.before.length})</div>${r.before.length ? dateList(r.before) : '<ul><li class="more">none</li></ul>'}<div class="sec">After (${r.after.length})</div>${r.after.length ? dateList(r.after) : '<ul><li class="more">none</li></ul>'}`;
+  } else {
+    const mix = PRECEDENCE.filter(s => r.bySrc[s]);
+    el.innerHTML = `<h3>${title}</h3><div>${FL.plural(r.flights.length, 'flight')} in view</div>${mix.length > 1 ? `<div class="more">${mix.map(s => `${srcName(s)} ${r.bySrc[s]}`).join(' · ')}</div>` : ''}${dateList(r.flights)}`;
+  }
+  if (hit.others.length) {
+    const n = o => S.pinned ? `${o.before.length}→${o.after.length}` : o.flights.length;
+    el.innerHTML += `<div class="sec">Also here</div><ul>${hit.others.map(o => `<li>${short(o.o)} → ${short(o.d)} (${n(o)})</li>`).join('')}</ul>`;
+  }
+  el.hidden = false;
+  const bw = el.offsetWidth, bh = el.offsetHeight;
+  el.style.left = Math.min(W - bw - 8, x + 14) + 'px';
+  el.style.top = Math.max(8, Math.min(H - bh - 8, y + 14)) + 'px';
+}
+
+// ── state changes ──
+function pin(id, { instant = false, keepHash = false } = {}) {
+  const e = EVENTS.find(x => x.id === id);
+  if (!e || e.type === 'flight') return;
+  stopPlay();
+  S.pinned = id; S.t = e.date; S.year = +e.date.slice(0, 4);
+  if (!keepHash) history.replaceState(null, '', '#event=' + id);  // R8: never pushState
+  buildStrips();
+  refit(currentFitPoints(), instant);
+  $('#readout').hidden = true;
+  render();
+}
+function unpin(updateHash = true) {
+  if (!S.pinned) return;
+  S.pinned = null;
+  if (!updateHash) return;   // internal callers (scrub, year, play) set their own state and render once themselves
+  history.replaceState(null, '', '#t=' + S.t);
+  render();
+}
+let hashTimer = 0;
+function setT(t) {
+  t = FL.clampT(t);
+  if (S.pinned) unpin(false);
+  S.t = t;
+  const y = FL.yearOfT(t);
+  if (y !== S.year) { S.year = y; buildStrips(); }
+  $('#readout').hidden = true;
+  render();
+  if (!S.playing) saveHashSoon();
+}
+function saveHashSoon() { clearTimeout(hashTimer); hashTimer = setTimeout(() => history.replaceState(null, '', '#t=' + S.t), 300); }  // R8
+const yearPoints = y => pointsOf(FL.window(D.flights, `${y}-01-01`, `${y + 1}-01-01`));
+// Top strip: pick a year. The window keeps its place in the calendar (Mar 14 → Mar 14 of the new year).
+function selectYear(y, { fit = true } = {}) {
+  y = Math.max(2006, Math.min(2019, y));
+  if (y === S.year && !S.pinned) { if (fit) refit(currentFitPoints()); return; }
+  stopPlay();
+  if (S.pinned) unpin(false);
+  S.year = y; S.t = FL.moveToYear(S.t, y);
+  buildStrips(); $('#readout').hidden = true; render(); saveHashSoon();
+  if (fit) refit(currentFitPoints());   // R7: a year change re-frames to the flights in view (play frames the whole year instead)
+}
+function flightEventT(e) { return FL.addDays(e.date, 11); }  // window ends 11 days after a trip starts, so the whole trip is on the map
+
+// ── play: runs on through the years, re-framing at each new year ──
+let playAcc = 0, playLast = 0, playEnd = '';
+function startPlay() {
+  const { start, end } = FL.playRange(S.t);
+  if (S.pinned) unpin(false);
+  S.t = start; playEnd = end; S.playing = true; playAcc = 0; playLast = performance.now();
+  S.year = FL.yearOfT(start); buildStrips();
+  refit(yearPoints(S.year), false);
+  $('#play').textContent = '❚❚ Pause'; $('#play').setAttribute('aria-label', 'Pause');
+  render(); tick();
+}
+function stepPlay(now) {
+  playAcc += (now - playLast) / 1000 * 7 * S.speed; playLast = now;   // 1× = one week per second
+  if (playAcc < 1) return;
+  const n = Math.floor(playAcc); playAcc -= n;
+  let t = FL.addDays(S.t, n);
+  if (t >= playEnd) { S.t = playEnd; stopPlay(); history.replaceState(null, '', '#t=' + S.t); return; }
+  S.t = t;
+  const y = FL.yearOfT(t);
+  if (y !== S.year) { S.year = y; buildStrips(); refit(yearPoints(y), false); }
+  drawStrips(); drawCard(); updateChips();
+}
+function stopPlay() {
+  if (!S.playing) return;
+  S.playing = false;
+  $('#play').textContent = '▶ Play'; $('#play').setAttribute('aria-label', 'Play from here');
+  render();
+}
+
+// ── timeline strips ──
+let monthCounts = [], laneCounts = [];
+function monthIndex(s) { return (+s.slice(0, 4) - 2006) * 12 + +s.slice(5, 7) - 1; }
+function buildStrips() { buildOverview(); buildLane(); }
+const OV = { a: FL.parse('2006-01-01'), b: FL.parse('2020-01-01') };
+function xOf(range, s, width) { return (FL.parse(s) - range.a) / (range.b - range.a) * width; }
+function dateAt(range, x, width) { return FL.iso(range.a + Math.round(Math.max(0, Math.min(1, x / width)) * (range.b - range.a) / DAY) * DAY); }
+
+function buildOverview() {
+  const el = $('#overview'), w = el.clientWidth || 800, h = 44, barTop = 12;
+  if (!monthCounts.length) { monthCounts = new Array(168).fill(0); for (const f of D.flights) monthCounts[monthIndex(f.date)]++; }
+  const max = Math.max(...monthCounts), bw = w / 168, yw = w / 14;
+  let svg = `<svg width="${w}" height="${h + 16}" aria-hidden="true"><defs><pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="5" stroke="rgba(22,20,16,.12)" stroke-width="2"/></pattern></defs>`;
+  // selected year: tinted band, ink bars, bold label
+  const sx = (S.year - 2006) * yw;
+  svg += `<rect x="${sx}" y="0" width="${yw}" height="${h + 16}" fill="rgba(181,135,106,.16)"/><rect x="${sx}" y="${h}" width="${yw}" height="2" fill="#161410"/>`;
+  for (const y of D.sparse) {
+    const x0 = (y - 2006) * yw, x1 = x0 + yw;
+    svg += `<g><title>Sparse records: fewer flights on file. This may reflect missing records or less travel; the sources don't say which.</title><rect x="${x0}" y="${barTop}" width="${x1 - x0}" height="${h - barTop}" fill="url(#hatch)"/><text x="${(x0 + x1) / 2}" y="9" text-anchor="middle" font-size="9" fill="#7A7169">sparse records</text></g>`;
+  }
+  monthCounts.forEach((n, i) => {
+    const bh = n / max * (h - barTop), on = Math.floor(i / 12) + 2006 === S.year;
+    svg += `<rect x="${i * bw + .5}" y="${h - bh}" width="${Math.max(1, bw - 1)}" height="${bh}" fill="${on ? '#161410' : '#D3CCC2'}"/>`;
+  });
+  for (let y = 2006; y <= 2019; y++) {
+    const x = (y - 2006) * yw, on = y === S.year;
+    svg += `<line x1="${x}" x2="${x}" y1="${h}" y2="${h + 4}" stroke="#7A7169"/><text x="${x + yw / 2}" y="${h + 14}" text-anchor="middle" font-size="${on ? 12 : 10}" font-weight="${on ? 600 : 400}" fill="${on ? '#161410' : '#7A7169'}">${y}</text>`;
+  }
+  svg += `<line x1="0" x2="${w}" y1="${h}" y2="${h}" stroke="#7A7169" stroke-width=".5"/></svg>`;
+  el.innerHTML = svg + `<div class="year-pos"></div>`;
+  el.dataset.h = h;
+  // source coverage (handoffs), named differently from "sparse records"
+  const cov = $('#coverage'); cov.innerHTML = '';
+  PRECEDENCE.filter(s => D.sources[s]).forEach((s, i) => {
+    const r = D.sources[s], x0 = xOf(OV, r.from, w), x1 = xOf(OV, r.to, w);
+    const d = document.createElement('div'); d.className = 'cov'; d.style.left = x0 + 'px'; d.style.width = (x1 - x0) + 'px'; d.style.top = (i * 0) + 'px';
+    d.innerHTML = `<svg width="${x1 - x0}" height="4" style="position:absolute;top:${i * 5}px"><line x1="0" x2="${x1 - x0}" y1="2" y2="2" stroke="${SRC[s].color}" stroke-width="2" stroke-dasharray="${SRC[s].dash.join(' ')}"/></svg>`;
+    cov.appendChild(d);
+  });
+  const label = document.createElement('div'); label.className = 'cov'; label.style.left = '0'; label.style.right = '0';
+  label.innerHTML = `<span style="top:10px">Records on file: ${PRECEDENCE.filter(s => D.sources[s]).map(s => `${SRC[s].label} ${D.sources[s].from.slice(0, 4)}–${D.sources[s].to.slice(0, 4)}`).join(' · ')}${D.adsb_included ? '' : ' · ADS-B left out (see About the data)'}</span>`;
+  cov.appendChild(label);
+}
+function buildLane() {
+  const el = $('#lane'), w = el.clientWidth || 800, h = 40, barTop = 14, y = S.year;
+  const [ls, le] = FL.laneRange(y), range = { a: FL.parse(ls), b: FL.parse(le) }, jan1 = FL.parse(`${y}-01-01`);
+  el._range = range;
+  // weekly bins counted from Jan 1; the lead-in (previous December) gets bins -4..-1
+  const bins = new Map();
+  for (const f of FL.window(D.flights, ls, le)) { const i = Math.floor((FL.parse(f.date) - jan1) / DAY / 7); bins.set(i, (bins.get(i) || 0) + 1); }
+  const max = Math.max(6, ...bins.values()), xMs = ms => (ms - range.a) / (range.b - range.a) * w, xLead = xMs(jan1);
+  let svg = `<svg width="${w}" height="${h + 16}" aria-hidden="true"><rect x="0" y="0" width="${xLead}" height="${h}" fill="rgba(22,20,16,.04)"/>`;
+  for (const [i, n] of bins) {
+    const x0 = Math.max(0, xMs(jan1 + i * 7 * DAY)), x1 = Math.min(w, xMs(jan1 + (i + 1) * 7 * DAY)), bh = n / max * (h - barTop);
+    svg += `<rect x="${x0 + .5}" y="${h - bh}" width="${Math.max(1, x1 - x0 - 1.5)}" height="${bh}" fill="${i < 0 ? '#E2DDD5' : '#C9C2B9'}"/>`;
+  }
+  const narrow = w < 600;   // narrow lanes: month initials
+  svg += `<text x="${xLead / 2}" y="${h + 14}" text-anchor="middle" font-size="10" fill="#B0A89E">${narrow ? '' : 'Dec'}</text>`;
+  for (let m = 0; m < 12; m++) {
+    const s = `${y}-${String(m + 1).padStart(2, '0')}-01`, x = xOf(range, s, w), mon = MONTHS[m];
+    const text = m === 0 ? `${y}` : narrow ? (m === 1 ? '' : mon[0]) : mon;   // narrow: the year label needs Feb's space
+    svg += `<line x1="${x}" x2="${x}" y1="${h}" y2="${h + (m === 0 ? 8 : 4)}" stroke="${m === 0 ? '#161410' : '#7A7169'}"/><text x="${x + 2}" y="${h + 14}" font-size="10" font-weight="${m === 0 ? 600 : 400}" fill="${m === 0 ? '#161410' : '#7A7169'}">${text}</text>`;
+  }
+  svg += `<line x1="0" x2="${w}" y1="${h}" y2="${h}" stroke="#7A7169" stroke-width=".5"/></svg>`;
+  const evs = EVENTS.filter(e => e.date >= ls && e.date < le).map(e =>
+    `<button class="ev ${e.type === 'flight' ? 'flight' : 'news'}" data-id="${e.id}" tabindex="-1" aria-hidden="true" style="left:${xOf(range, e.date, w)}px" title="${FL.fmt(e.date)} · ${e.title.replace(/"/g, '&quot;')}"><i></i></button>`).join('');
+  el.innerHTML = svg + `<div class="win-shade"></div><div class="win-before"></div><div class="win-after"></div><div class="lane-events">${evs}</div>`;
+  el.dataset.h = h;
+  $('#lane-label').textContent = `${y}, month by month`;
+}
+function placeWindow(el, range) {
+  const w = el.clientWidth, h = +el.dataset.h, shade = el.querySelector('.win-shade'), bef = el.querySelector('.win-before'), aft = el.querySelector('.win-after');
+  const x = s => Math.max(0, Math.min(w, xOf(range, s, w)));
+  const box = (node, a, b) => { const x0 = x(a), x1 = x(b); node.style.left = x0 + 'px'; node.style.width = Math.max(x1 - x0, 0) + 'px'; node.style.height = h + 'px'; node.style.display = x1 > x0 ? '' : 'none'; };
+  if (S.pinned) {
+    const e = EVENTS.find(v => v.id === S.pinned);
+    shade.style.display = 'none'; box(bef, FL.addDays(e.date, -WINDOW), e.date); box(aft, e.date, FL.addDays(e.date, WINDOW));
+  } else {
+    bef.style.display = aft.style.display = 'none'; box(shade, FL.addDays(S.t, -WINDOW), S.t);
+    shade.style.minWidth = '2px';
+  }
+}
+function drawStrips() {
+  // top strip: a thin marker for where the window sits inside the selected year
+  const ov = $('#overview'), pos = ov.querySelector('.year-pos'), last = FL.parse(FL.addDays(S.pinned ? FL.addDays(S.t, 1) : S.t, -1));
+  const frac = (last - FL.parse(`${S.year}-01-01`)) / (FL.parse(`${S.year + 1}-01-01`) - FL.parse(`${S.year}-01-01`));
+  pos.style.left = ((S.year - 2006 + Math.max(0, Math.min(1, frac))) * ov.clientWidth / 14) + 'px'; pos.style.height = ov.dataset.h + 'px';
+  placeWindow($('#lane'), $('#lane')._range);
+  document.querySelectorAll('.lane-events .ev').forEach(b => b.classList.toggle('on', b.dataset.id === S.pinned));
+  const a = S.pinned ? null : FL.addDays(S.t, -WINDOW);
+  const text = S.pinned ? `Comparing 4 weeks before and after ${FL.fmt(EVENTS.find(e => e.id === S.pinned).date)}` : `${FL.fmtRange(a, S.t)} · ${FL.plural(FL.window(D.flights, a, S.t).length, 'flight')}`;
+  $('#win-label').textContent = text;
+  ov.setAttribute('aria-valuemin', 2006); ov.setAttribute('aria-valuemax', 2019); ov.setAttribute('aria-valuenow', S.year); ov.setAttribute('aria-valuetext', String(S.year));
+  const lane = $('#lane'), b = FL.yearBounds(S.year);
+  lane.setAttribute('aria-valuemin', 0); lane.setAttribute('aria-valuemax', 365);
+  lane.setAttribute('aria-valuenow', Math.round((FL.parse(S.t) - FL.parse(b.min)) / DAY)); lane.setAttribute('aria-valuetext', text);
+  $('#year-pick').value = String(S.year);
+}
+
+// ── card ──
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const typeLabel = { legal: 'Legal', public: 'Public', flight: 'Flight' };
+function drawCard() {
+  const card = $('#card');
+  if (S.pinned) {
+    const e = EVENTS.find(x => x.id === S.pinned), c = FL.compare(D.flights, e.date), i = NEWS.indexOf(e);
+    const prev = NEWS[(i - 1 + NEWS.length) % NEWS.length], next = NEWS[(i + 1) % NEWS.length];
+    const key = 'pinned:' + e.id;
+    if (card.dataset.key === key) return;
+    card.dataset.key = key;
+    card.innerHTML = `<button class="close" data-act="unpin" aria-label="Close the comparison">× Overview</button>
+      <div class="kicker"><span class="pin">◆</span> ${FL.fmt(e.date)} · ${typeLabel[e.type]}</div>
+      <h2>${esc(e.title)}</h2>
+      <div class="counts">
+        <div><b>${c.before.length}</b><span><i class="sw before"></i>4 weeks before</span></div>
+        <div><b>${c.after.length}</b><span><i class="sw after"></i>4 weeks after</span></div>
+      </div>
+      <p class="sentence">${FL.plural(c.before.length, 'flight')} before, ${c.after.length} after; ${c.shared} of ${FL.plural(c.routes.length, 'route')} flown in both.</p>
+      <details class="more-info"><summary>What happened</summary><p class="body">${esc(e.body)}</p></details>
+      <a class="src-link" href="${esc(e.source_url)}" target="_blank" rel="noopener">Source: ${esc(e.source_label)} ↗</a>
+      <p class="foot">${FL.sourceNote([...c.before, ...c.after])} · 4-week windows · small counts</p>
+      <div class="card-nav"><button data-act="pin" data-id="${prev.id}">← ${FL.fmt(prev.date, false)}</button><button data-act="pin" data-id="${next.id}">${FL.fmt(next.date, false)} →</button></div>`;
+    return;
+  }
+  const a = FL.addDays(S.t, -WINDOW), list = FL.window(D.flights, a, S.t);
+  const annot = EVENTS.find(e => e.type === 'flight' && e.date >= a && e.date < S.t);
+  const key = `t:${S.t}:${annot ? annot.id : ''}`;
+  if (card.dataset.key === key) return;
+  card.dataset.key = key;
+  card.innerHTML = `<div class="kicker">In view</div>
+    <h2>${FL.fmtRange(a, S.t)}</h2>
+    <p class="body">${FL.plural(list.length, 'flight')} on ${FL.plural(FL.routes(list).length, 'route')}. Hover or tap an arc for dates.</p>
+    ${annot ? `<div class="annot"><div class="kicker"><span class="diamond hollow"></span>${FL.fmt(annot.date)} · Flight</div><h2>${esc(annot.title)}</h2><p class="body">${esc(annot.body)}</p><a class="src-link" href="${esc(annot.source_url)}" target="_blank" rel="noopener">Source: ${esc(annot.source_label)} ↗</a></div>` : ''}
+    <div class="annot"><div class="kicker">Compare a news event, 4 weeks either side</div>
+      <ul class="news-list">${NEWS.map(n => `<li><button data-act="pin" data-id="${n.id}"><span class="diamond"></span>${FL.fmt(n.date)}: ${esc(n.title)}</button></li>`).join('')}</ul></div>`;
+}
+
+// ── chips, year picker, legend, about, sr table ──
+function buildChips() {
+  $('#chips').innerHTML = EVENTS.map(e => `<button data-id="${e.id}" aria-pressed="false" title="${esc(e.title)}"><span class="diamond${e.type === 'flight' ? ' hollow' : ''}"></span>${FL.fmt(e.date, false)}<span class="sr-only">, ${typeLabel[e.type]}: ${esc(e.title)}</span></button>`).join('');
+}
+function updateChips() {
+  const a = FL.addDays(S.t, -WINDOW);
+  document.querySelectorAll('#chips button').forEach(b => {
+    const e = EVENTS.find(x => x.id === b.dataset.id);
+    b.setAttribute('aria-pressed', S.pinned ? String(S.pinned === e.id) : String(e.type === 'flight' && e.date >= a && e.date < S.t));
+  });
+}
+function buildYearPick() {
+  let o = ''; for (let y = 2006; y <= 2019; y++) o += `<option value="${y}">${y}</option>`;
+  $('#year-pick').innerHTML = o;
+}
+function buildLegend() {
+  const sw = (s) => `<svg width="22" height="6"><line x1="1" x2="21" y1="3" y2="3" stroke="${SRC[s].color}" stroke-width="2" stroke-dasharray="${SRC[s].dash.join(' ')}"/></svg>`;
+  $('#legend').innerHTML = PRECEDENCE.filter(s => D.sources[s]).map(s => `<span class="lg">${sw(s)}${SRC[s].label}</span>`).join('') +
+    `<span class="lg"><svg width="22" height="8"><line x1="1" x2="21" y1="4" y2="4" stroke="#8F877E" stroke-width="6" stroke-linecap="round"/><line x1="1" x2="21" y1="4" y2="4" stroke="#161410" stroke-width="2"/></svg>Before / after</span>`;
+}
+function buildSrTable() {
+  $('#sr-table tbody').innerHTML = NEWS.map(e => { const c = FL.compare(D.flights, e.date); return `<tr><td>${esc(e.title)}</td><td>${FL.fmt(e.date)}</td><td>${c.before.length}</td><td>${c.after.length}</td><td>${c.shared} of ${c.routes.length}</td></tr>`; }).join('');
+}
+function buildAbout() {
+  const kept = {}; for (const f of D.flights) kept[f.sources[0]] = (kept[f.sources[0]] || 0) + 1;
+  const dropped = Object.entries(D.dropped).sort((a, b) => b[1] - a[1]);
+  const totalRows = D.rows;
+  $('#about-body').innerHTML = `
+    <p>This map shows every flight in the source data that carries a citation, between 2006 and 2019. Pick a news event to compare the 4 weeks before it with the 4 weeks after. The counts are small and come mostly from one kind of record, so the card reports what is on file, not a verdict.</p>
+    <h3>Source data</h3>
+    <p>A flight export from <a href="https://epsteinexposed.com/flights" target="_blank" rel="noopener">Epstein Exposed</a>, downloaded Sep 29, 2026 (“Public Interest — Attribution Requested”). It aggregates the unredacted flight logs, FAA records released under FOIA, and exhibits from <i>USA v. Maxwell</i>.</p>
+    <h3>What is shown</h3>
+    <table>${PRECEDENCE.filter(s => kept[s]).map(s => `<tr><td>${SRC[s].label}</td><td class="n">${kept[s]}</td><td>${D.sources[s].from.slice(0, 4)}–${D.sources[s].to.slice(0, 4)}</td></tr>`).join('')}<tr><td><b>Flights on the map</b></td><td class="n"><b>${D.flights.length}</b></td><td></td></tr></table>
+    <p style="margin-top:6px">Flights recorded in two sources on the same day and route are drawn once and listed under both.</p>
+    <h3>What was left out (of ${totalRows.toLocaleString()} rows)</h3>
+    <ul>
+      <li><b>${(D.dropped['no source'] || 0).toLocaleString()}</b> rows with no citation. Many are probably transcribed from the flight logs, but none links to a document.</li>
+      <li><b>${D.dropped['ADS-B (provider unidentified, R6)'] || 0}</b> ADS-B transponder rows (2016–2019): the data's provider and its reuse terms are not identified yet.</li>
+      <li><b>${['unidentified source ER', 'unidentified source PHOTO', 'unidentified source FlightAware', 'unidentified source House Oversight Committee release'].reduce((s, k) => s + (D.dropped[k] || 0), 0)}</b> rows cited only as “ER”, “PHOTO”, “FlightAware” or a single committee release, which could not be traced to a document.</li>
+      <li><b>${D.dropped['same origin and destination'] || 0}</b> rows that start and end at the same airport (local flights that cannot be drawn as a route).</li>
+      <li><b>${D.dropped['unresolvable airport'] || 0}</b> rows with an airport code that cannot be right (a stop in western China between two same-day US legs; a small Brazilian town twice from Palm Beach).</li>
+      <li><b>${D.dropped['outside 2006-2019 (doj)'] || 0}</b> cited rows from 1995, outside this map's range.</li>
+    </ul>
+    <h3>Gaps in the record</h3>
+    <p>Years with fewer than a quarter of the median year's flights are hatched as <i>sparse records</i> on the timeline (${D.sparse.join(' and ')}). That may reflect missing records or less travel; the sources don't say which. The pilot logbook ends in 2013; after that the map is FAA records alone.</p>
+    <h3>Corrections to earlier versions</h3>
+    <ul>
+      <li>Airport coordinates were re-checked against OurAirports. Several were wrong in the earlier map data: Santa Maria in the Azores had been placed in Morocco, the Little St. James helipad in Switzerland, and two typo'd codes (Aspen, São Paulo) on other continents.</li>
+      <li>Giuffre v. Maxwell was filed on Sep 21, 2015, not in the week of the Sep 7 Paris flight.</li>
+      <li>MIT's report says Epstein was never coded “disqualified” in its donor database; an earlier caption said otherwise.</li>
+    </ul>
+    <h3>Names</h3>
+    <p>No passenger is named on this page. Events refer to public figures by role; names appear only in the linked sources.</p>
+    <h3>Credits</h3>
+    <p><i>Epstein Flight Logs</i> began as a project for Fundamentals of Computational Design at Carnegie Mellon (Spring 2026) with Max Whalley and Lukas Yao. This interactive extension is by Morris Zhang. Map: Natural Earth via world-atlas; d3-geo.</p>`;
+}
+
+// ── input ──
+// Top strip: years only. Dragging across it changes the year; the map re-frames when the pointer lets go.
+function overviewPointer(el) {
+  let dragging = false;
+  const yearAt = ev => { const r = el.getBoundingClientRect(); return 2006 + Math.max(0, Math.min(13, Math.floor((ev.clientX - r.left) / r.width * 14))); };
+  el.addEventListener('pointerdown', ev => { dragging = true; el.setPointerCapture(ev.pointerId); selectYear(yearAt(ev), { fit: false }); });
+  el.addEventListener('pointermove', ev => { if (dragging && yearAt(ev) !== S.year) selectYear(yearAt(ev), { fit: false }); });
+  const end = () => { if (dragging) { dragging = false; refit(currentFitPoints()); } };
+  el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end);
+  el.addEventListener('keydown', ev => {
+    const y = { ArrowLeft: S.year - 1, ArrowDown: S.year - 1, ArrowRight: S.year + 1, ArrowUp: S.year + 1, Home: 2006, End: 2019 }[ev.key];
+    if (y) { ev.preventDefault(); selectYear(y); }
+  });
+}
+// Lane: days within the selected year. The clicked day becomes the window's last day.
+function lanePointer(el) {
+  let dragging = false;
+  const tAt = ev => {
+    const r = el.getBoundingClientRect(), b = FL.yearBounds(S.year), t = FL.addDays(dateAt(el._range, ev.clientX - r.left, r.width), 1);
+    return t < b.min ? b.min : t > b.max ? b.max : t;   // the December lead-in is context only
+  };
+  el.addEventListener('pointerdown', ev => {
+    if (ev.target.closest('.ev')) return;
+    dragging = true; el.setPointerCapture(ev.pointerId); stopPlay(); setT(tAt(ev));
+  });
+  el.addEventListener('pointermove', ev => { if (dragging) setT(tAt(ev)); });
+  const end = () => { dragging = false; };
+  el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end);
+  el.addEventListener('keydown', ev => {     // arrows can walk past Dec 31 into the next year
+    const step = ev.shiftKey ? 7 : 1;
+    const k = { ArrowLeft: -step, ArrowRight: step, ArrowDown: -step, ArrowUp: step }[ev.key];
+    const b = FL.yearBounds(S.year);
+    if (k) { ev.preventDefault(); stopPlay(); setT(FL.addDays(S.t, k)); }
+    else if (ev.key === 'Home') { ev.preventDefault(); setT(b.min); }
+    else if (ev.key === 'End') { ev.preventDefault(); setT(b.max); }
+  });
+}
+function selectEvent(id) {
+  const e = EVENTS.find(x => x.id === id);
+  if (!e) return;
+  if (e.type === 'flight') { stopPlay(); setT(flightEventT(e)); refit(currentFitPoints()); }
+  else if (S.pinned === id) unpin(); else pin(id);
+}
+function bind() {
+  overviewPointer($('#overview')); lanePointer($('#lane'));
+  $('#lane').addEventListener('click', ev => { const b = ev.target.closest('.ev'); if (b) selectEvent(b.dataset.id); });
+  $('#chips').addEventListener('click', ev => { const b = ev.target.closest('button'); if (b) selectEvent(b.dataset.id); });
+  $('#card').addEventListener('click', ev => {
+    const b = ev.target.closest('button'); if (!b) return;
+    if (b.dataset.act === 'pin') pin(b.dataset.id);
+    if (b.dataset.act === 'unpin') unpin();
+  });
+  $('#play').addEventListener('click', () => S.playing ? stopPlay() : startPlay());
+  $('#speed').addEventListener('click', () => { S.speed = S.speed === 1 ? 4 : 1; $('#speed').textContent = S.speed + '×'; });
+  $('#fit-btn').addEventListener('click', () => refit(currentFitPoints()));
+  $('#year-pick').addEventListener('change', ev => selectYear(+ev.target.value));   // phone stand-in for the top strip
+  $('#about-btn').addEventListener('click', () => $('#about').showModal());
+  $('#about-close').addEventListener('click', () => $('#about').close());
+  $('#about').addEventListener('click', ev => { if (ev.target === $('#about')) $('#about').close(); });
+  canvas.addEventListener('pointermove', ev => {
+    if (ev.pointerType !== 'mouse') return;
+    const r = canvas.getBoundingClientRect(), x = ev.clientX - r.left, y = ev.clientY - r.top;
+    const hit = pick(x, y, false); canvas.style.cursor = hit ? 'pointer' : ''; showReadout(hit, x, y);
+  });
+  canvas.addEventListener('pointerleave', ev => { if (ev.pointerType === 'mouse') $('#readout').hidden = true; });
+  canvas.addEventListener('pointerup', ev => {
+    if (ev.pointerType === 'mouse') return;
+    const r = canvas.getBoundingClientRect(), x = ev.clientX - r.left, y = ev.clientY - r.top;
+    showReadout(pick(x, y, true), x, y);
+  });
+  let rt = 0;
+  new ResizeObserver(() => { clearTimeout(rt); rt = setTimeout(() => resize(true), 80); }).observe(canvas);
+  window.addEventListener('hashchange', () => {
+    const h = FL.parseHash(location.hash, EVENTS);
+    if (h && h.event) pin(h.event, { keepHash: true });
+    else if (h && h.t) { setT(h.t); refit(currentFitPoints()); }
+  });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) stopPlay(); });
+}
+
+load();
+</script>
+</body>
+</html>

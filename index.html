@@ -333,6 +333,15 @@ body.deer-loading .cursor-dot, body.deer-loading .cursor-ring { display:none; }
 .project-img-natural .project-img-pair { align-items:start; }
 .project-images + .project-images { margin-top:calc(-1 * clamp(40px,5vw,64px) + 3px); }
 .project-images img { cursor:zoom-in; }
+/* Epstein slot 6: poster links to the interactive map; a ?teaser=1 iframe loops over it near the viewport */
+.fl-teaser { position:relative; border:1px solid var(--border); }
+.fl-teaser-link { display:block; position:relative; color:var(--fg); text-decoration:none; }
+.fl-teaser-link:focus-visible { outline:2px solid var(--accent-dark); outline-offset:3px; }
+.fl-teaser img { cursor:pointer; }
+.fl-teaser-frame { position:absolute; inset:0; width:100%; height:100%; border:0; pointer-events:none; background:#fff; opacity:0; transition:opacity .4s; }
+.fl-teaser-frame.on { opacity:1; }   /* shown once loaded, so the poster never flashes white */
+.fl-teaser-cta { position:absolute; right:12px; bottom:12px; z-index:1; font-family:var(--body); font-size:13px; background:var(--bg); border:1px solid var(--fg); padding:6px 12px; }
+.fl-teaser-link:hover .fl-teaser-cta { background:var(--fg); color:var(--bg); }
 
 /* ── PAGE TRANSITION VEIL ── */
 /* clip-path wipe expands from the click point; opacity fade reveals the swapped page.
@@ -1017,8 +1026,11 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { width:0; height:0; display:no
         <div style="aspect-ratio:4/3;"><img src="portfolioInformationForClaude/web-images/embedded/emb-4.webp" alt="String installation detail" loading="lazy" data-pid="epstein" data-slot="4"></div>
         <div style="aspect-ratio:4/3;"><img src="portfolioInformationForClaude/web-images/embedded/emb-5.webp" alt="String network close-up" loading="lazy" data-pid="epstein" data-slot="5"></div>
       </div>
-      <div class="project-img-full" style="aspect-ratio:4/3;">
-        <img src="portfolioInformationForClaude/web-images/Epstein%20List/epstein_2015_timeline_v2%20(1).webp" alt="String installation view" loading="lazy" data-pid="epstein" data-slot="6">
+      <div class="project-img-full fl-teaser" style="aspect-ratio:4/3;">
+        <a class="fl-teaser-link" href="epstein-flights.html#event=filing-reported" aria-label="Explore the interactive flight map, 2006–2019">
+          <img src="portfolioInformationForClaude/web-images/Epstein%20List/epstein-teaser-poster.webp" alt="Map of flights before and after the January 2015 court filing" loading="lazy" data-pid="epstein" data-slot="6" data-no-lightbox="">
+          <span class="fl-teaser-cta">Explore the flights →</span>
+        </a>
       </div>
     </div>
   </section>
@@ -3663,9 +3675,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.key === 'ArrowRight') step(1);
   });
 
-  // Wire all images per page — combined sequence across both blocks
+  // Wire all images per page — combined sequence across both blocks.
+  // [data-no-lightbox] images (the Epstein map poster) are links, so they stay out of the sequence and its indexes.
   document.querySelectorAll('.page').forEach(function(page) {
-    var imgs = Array.from(page.querySelectorAll('.project-images img'));
+    var imgs = Array.from(page.querySelectorAll('.project-images img:not([data-no-lightbox])'));
     imgs.forEach(function(img, i) {
       img.addEventListener('click', function() { openLightbox(imgs, i); });
     });
@@ -3673,6 +3686,28 @@ document.addEventListener('DOMContentLoaded', () => {
 })();
 </script>
 
+<script>
+/* Epstein flight-map teaser: load the looping ?teaser=1 view over the poster only when slot 6 is within a viewport of
+   scrolling; pause it when it leaves. Reduced motion or Save-Data keep the static poster (it is the loop's last frame). */
+(function() {
+  var box = document.querySelector('.fl-teaser');
+  if (!box || !('IntersectionObserver' in window)) return;
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches || (navigator.connection && navigator.connection.saveData)) return;
+  var frame = null;
+  new IntersectionObserver(function(entries) {
+    var near = entries[0].isIntersecting;
+    if (near && !frame) {
+      frame = document.createElement('iframe');
+      frame.className = 'fl-teaser-frame'; frame.src = 'epstein-flights.html?teaser=1';
+      frame.title = ''; frame.tabIndex = -1; frame.setAttribute('aria-hidden', 'true');
+      frame.addEventListener('load', function() { setTimeout(function() { frame.classList.add('on'); }, 250); });
+      box.querySelector('.fl-teaser-link').insertBefore(frame, box.querySelector('.fl-teaser-cta'));
+    } else if (frame && frame.contentWindow) {
+      frame.contentWindow.postMessage({ flTeaser: near ? 'play' : 'pause' }, '*');
+    }
+  }, { rootMargin: '100% 0px' }).observe(box);
+})();
+</script>
 
 <script>/* dog-deer logomark + easter egg */(function(){var DEER_INNER=' <path fill="#010100" d="M2095.46,2276.75c-31.37,171.66-19.33,366.1,11.27,536.22,5.8,32.25,7.51,72.53-11.75,79.55-7.24,2.64-16.99-.48-22.9-7.91-34.17-42.98-64.36-197.85-81.91-268.99l-46.68-189.26c-5.81-23.55-13-44.98-27.5-67.48-12.45,25.96-14.4,52.24-17.15,79.76-7.14,71.42-6.68,141.31-1.27,213.3l12.16,161.77c2.3,30.64.2,64.67-18.15,65.54-25.01,1.18-45.26-66.77-56.51-105.83-40.61-141.09-69.62-283.36-93.17-430.2-154.97,27.13-299.92,11.67-449.01-35.3-21.47,160.83-29.84,320.05-27.29,481.87.56,35.35.19,83.84-18,92.3-42.39,19.72-61.22-130.01-67.23-186.11l-32.22-301.18-41.35,152.27c-18.44,67.91-96.68,344.18-151.73,312.95-21.38-12.12-7.07-75.04,4.08-113.2,30.83-105.53,55.09-209.51,72.78-318.43,28-172.42,41.66-342.32-5.71-513.37-48.29,47.71-93.76,91.81-143.92,134.15-27.69,23.38-56.32,43.1-90.44,54.48-19.97,5.35-39.62,6.07-56.48-6.13-43.64-31.59-23.44-97.3.02-148.45,51.42-112.1,114.85-214.62,184.79-321.01-46.2,7.54-88.54,13.68-129.93-2.47-10.88-4.24-20.22-10.98-22.94-20.25s-.19-23.31,8.6-30.82c46.58-39.78,102.67-64.07,164.95-75.73-14.68-57.09-14.53-114.75-7.04-173.67,6.73-52.91,19.61-103.43,47.96-147.91,16.91-26.78,44.96-48.23,62.61-34.23,30.57,24.24-26.64,135.44-41.99,206.34-6.15,28.4-8.05,64.78,1.77,67.27,13.44,3.41,27.13-99.23,69.77-93.46,11.4,1.54,20.13,10.48,22.32,23.25,2.21,12.9-.55,25.18-5.74,37.05l-27.76,63.43c-7.32,16.73-10.19,34.69-4.7,51.82,46.31,7.83,86.24,25.91,123.96,52.8,12.45-5.48,22.42-14.95,30.03-26.3l31.16-46.49c17.46-26.04,42.51-50.48,62.95-36.73,25.79,17.34,2.69,51.6-17.59,82.1-6.62,9.96-14.53,18.15-16.54,31.31,29.32-.81,68.54-43.62,88.82-70.38l53.81-71.01c19.5-25.73,51.87-56.32,73.07-46.12,18,8.66,15.74,46.98-.81,74.82-24.87,43.59-57.3,80.65-95.16,113.76-38.29,33.48-76.4,64.54-123.75,87.06,36.77,65.23,61.42,149.84,40.82,221.03-4.34,8.79-10.23,15.54-17.97,18.28s-17.24,1.17-25.38-4.25c-38.39-25.54-58.94-65.42-72.41-109.8l-70.94,58.91c30.58,34.33,62.13,61.11,99.52,85.38,91.17,61.2,196.32,93,307,90.4,94.32-2.21,185.13-31.6,273.47-33.49,125.68-2.69,203.58,33.26,293.58,114.91,31.59,28.66,63.23,54.24,100.1,75.25,63.39,36.13,105.07,21.57,115.57,38.16,11.71,18.5-14.43,43.61-37.21,61.78-51.16,40.78-119.8,48.17-178.74,16.68Z"/><path fill="#d4a04a" d="M1888.26,2858.55c-15.44-26.43-25.05-55.22-34.33-86.94-43.16-147.47-72.6-296.7-96.17-449.56-169.99,33.13-317.66,14.32-479.64-36.85-25.4,169.97-33.33,335.85-30.38,504.52.49,27.77.86,52.09-6.65,79.17-12.93-16.81-18.95-35.55-22.37-55.68l-19.58-115.05-23.39-232.54-13.76-94.88c-1.04-7.2-7.45-12.26-12.99-12.61-7.86-.48-12.87,5.75-15.04,13.99l-40.91,154.61c-21.46,81.11-44.26,159.41-77,236.41-12.97,30.51-25.77,59.74-52.36,84.14-3.61-34.81,4.7-65.76,14.22-98.65,43.47-150.33,75.27-301.34,91-457.56,13.22-131.3,9.48-261.3-26.66-389.18,19.9-22.04,41.63-40.86,65.55-61.46,107.26,113.88,253.33,181.47,410.61,181.44,100.71-.02,198.42-34.12,300.61-34.44,93.07-.29,177.12,32.6,246.37,94.51,65.13,58.24,138.06,125.16,231.45,124.2-7.24,22.53-24.65,35.04-43,46.86-53.07,34.18-116.63,33.52-170.36-4.33-13.08,49.72-18.21,94.53-21.41,143.69-9.36,143.81,1.33,285.88,27.85,426.89,3.73,19.85,4.96,37.68.15,57.29-15.33-16.52-21.71-34.53-26.87-53.91l-49.57-186.3-49.05-204.09c-8.59-35.73-28.48-95.92-51.91-90.35-7.33,1.74-15.44,8.61-18.2,17.91-10.24,34.62-13.98,69.48-15.67,106.78-4.84,106.28.66,210.54,11.15,316.48.17,25.18,6.61,46.43-1.67,75.51Z"/><path fill="#6b4e35" d="M1029.27,1416.47c10.88-27.76,25.85-76.21,42.3-75.12,5.2.34,8.67,8.1,7.55,14.78-7.96,47.49-48.28,85.77-41.41,139.28-27.57-1.85-50.07-1.85-78.43.44-24.01-87.44-12.02-226.44,34.64-303.25,9.53-15.69,20.14-31,39.67-36.77,5.14,23.99-3.56,46.51-10.94,68.77-11.67,35.2-25.23,68.06-33.98,104.23-10.55,43.61-19.36,104.26,15.68,106.76,11.52.82,20.28-7.29,24.91-19.12Z"/><path fill="#6b4e35" d="M1285.62,1458.97c33.11-7.97,2.69,34.07-21.41,67.79-7.65,10.71-14.16,27.28-5.79,39.07,20.3,28.61,83.78-25.53,112.76-63.87l55.12-72.95c14.13-18.69,29.55-36.46,51.55-46.27,7.34,11.2,4.09,24.36-.68,36.33-24.42,61.2-88.28,117.56-140.66,159.68-24.93,20.05-50,37.67-79.85,48.93-16.92-25-35.95-42.21-57.47-62.97,39.69-29.65,50.97-76.76,86.43-105.74Z"/><path fill="#5b4934" d="M849.31,2050.97c-31.2,23.48-72.9,50.38-99.47,35.39-27.95-15.77-24.93-62.48-9.54-100.39,45.05-1.34,89.03,22.65,109.01,65Z"/><path fill="#d4a04a" d="M863.87,2040.7c-21.21-46.12-65.51-68.56-116.61-73.3,56.67-126.11,128.29-239.56,204.02-352.11,2.29-3.41,1.77-9.05.18-10.91-6.54-7.63-50.24,14.17-101.14,12.91-22.07-.55-46.21-2.11-64.63-14.95-5.61-3.91,3.13-16.37,8.01-19.98,117.78-87.13,278.51-99.42,394.2-3.28,124.83,103.73,121.87,277.7,98.88,286.42-16.99,6.45-56.64-42.1-67.01-75.7l-16-51.84c-123.83,91.66-222.45,203.12-339.9,302.73Z"/><path fill="#020101" d="M1110.41,1668.36c26.23,7.86-3.12,82.35-27.39,74.34-16.94-5.59-12.77-47.77,12.86-70.29,4.61-4.05,10.34-5.31,14.53-4.06Z"/><path fill="#020101" d="M1005.4,1624.6c21.84,12.29-15.99,84.41-39.24,69.58-23.23-14.81,18.76-81.1,39.24-69.58Z"/>';
 function mk(vb,cls){return '<svg '+(cls?'class="'+cls+'" ':'')+'viewBox="'+vb+'" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" preserveAspectRatio="xMidYMid meet">'+DEER_INNER+'</svg>';}

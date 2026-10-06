@@ -1,0 +1,104 @@
+{
+  "default": "filing-reported",
+  "events": [
+    {
+      "id": "filing-reported",
+      "date": "2015-01-02",
+      "type": "public",
+      "title": "Court filing accusing a British royal becomes public",
+      "body": "A Dec 30, 2014 motion in Jane Doe #1 and Jane Doe #2 v. United States (S.D. Fla.) alleged that Jeffrey Epstein forced a minor into sexual encounters with others, including a member of the British royal family. Press coverage and palace denials followed on Jan 2–3.",
+      "source_url": "https://www.aljazeera.com/news/2015/1/3/uk-denies-prince-andrew-underage-sex-claim",
+      "source_label": "Al Jazeera, Jan 3 2015"
+    },
+    {
+      "id": "paris-azores-feb",
+      "date": "2015-02-27",
+      "type": "flight",
+      "title": "Boeing 727 to Paris, back via the Azores",
+      "body": "Palm Beach to JFK to Paris, Feb 27–28. The return on Mar 9 left from Santa Maria in the Azores for St. Thomas.",
+      "source_url": "https://epsteinexposed.com/flights",
+      "source_label": "FAA flight records (FOIA), via Epstein Exposed"
+    },
+    {
+      "id": "southwest-mar",
+      "date": "2015-03-17",
+      "type": "flight",
+      "title": "Eight days across the Southwest",
+      "body": "Palm Beach to Santa Fe, Phoenix, Boston and Teterboro, Mar 17–24, all on the Gulfstream.",
+      "source_url": "https://epsteinexposed.com/flights",
+      "source_label": "FAA flight records (FOIA), via Epstein Exposed"
+    },
+    {
+      "id": "allegations-struck",
+      "date": "2015-04-07",
+      "type": "legal",
+      "title": "Judge strikes the allegations from the record",
+      "body": "A federal judge in Florida struck the January allegations as impertinent to the case, made no finding on whether they were true, and denied the motion to join the suit.",
+      "source_url": "https://www.nbcnews.com/news/world/judge-rules-prince-andrews-underage-sex-accuser-cannot-join-lawsuit-n337671",
+      "source_label": "NBC News, Apr 7 2015"
+    },
+    {
+      "id": "paris-jun",
+      "date": "2015-06-30",
+      "type": "flight",
+      "title": "Ten days in Paris",
+      "body": "Teterboro to Paris on Jun 30, back on Jul 9.",
+      "source_url": "https://epsteinexposed.com/flights",
+      "source_label": "FAA flight records (FOIA), via Epstein Exposed"
+    },
+    {
+      "id": "palo-alto-dinner",
+      "date": "2015-08-02",
+      "type": "flight",
+      "title": "A private dinner with tech executives",
+      "body": "The 727 flew from Albuquerque to San Jose for a dinner in Palo Alto on Aug 2, then left the next day. The dinner was not public at the time; it surfaced in emails released years later.",
+      "source_url": "https://sfist.com/2026/02/03/epstein-files-reveal-where-he-dined-with-zuckerberg-in-bay-area-and-he-was-denied-a-table-at-flour-water/",
+      "source_label": "SFist, Feb 3 2026 (from DOJ-released emails)"
+    },
+    {
+      "id": "paris-sep",
+      "date": "2015-09-07",
+      "type": "flight",
+      "title": "Paris, two weeks before the suit",
+      "body": "Teterboro to Paris on Sep 7, back to Teterboro on Sep 13.",
+      "source_url": "https://epsteinexposed.com/flights",
+      "source_label": "FAA flight records (FOIA), via Epstein Exposed"
+    },
+    {
+      "id": "giuffre-v-maxwell",
+      "date": "2015-09-21",
+      "type": "legal",
+      "title": "Giuffre v. Maxwell filed",
+      "body": "A defamation suit filed in the Southern District of New York over a January 2015 statement that called the abuse allegations lies. It settled in 2017.",
+      "source_url": "https://storage.courtlistener.com/recap/gov.uscourts.nysd.447706/gov.uscourts.nysd.447706.1.0.pdf",
+      "source_label": "Complaint, Giuffre v. Maxwell, No. 15-cv-07433 (S.D.N.Y.)"
+    },
+    {
+      "id": "mit-visit",
+      "date": "2015-10-24",
+      "type": "flight",
+      "title": "A same-day trip to MIT",
+      "body": "Teterboro to Hanscom Field and back on Oct 24. MIT's 2020 fact-finding report records a fundraising visit that afternoon with Media Lab faculty and students. Gifts tied to him for one lab totaled $125,000 across 2015 and 2017.",
+      "source_url": "https://factfindingjan2020.mit.edu/files/MIT-report.pdf",
+      "source_label": "MIT fact-finding report (Goodwin Procter, Jan 2020), p. 49"
+    },
+    {
+      "id": "paris-azores-nov",
+      "date": "2015-11-07",
+      "type": "flight",
+      "title": "Boeing 727 to Paris, again back via the Azores",
+      "body": "Newark to Paris on Nov 7. The return on Nov 13 left from Santa Maria in the Azores for St. Thomas, the same way home as in March.",
+      "source_url": "https://epsteinexposed.com/flights",
+      "source_label": "FAA flight records (FOIA), via Epstein Exposed"
+    },
+    {
+      "id": "usual-triangle-dec",
+      "date": "2015-12-05",
+      "type": "flight",
+      "title": "December: the usual triangle",
+      "body": "St. Thomas, Palm Beach and Teterboro, the three airports that dominate every year of these records.",
+      "source_url": "https://epsteinexposed.com/flights",
+      "source_label": "FAA flight records (FOIA), via Epstein Exposed"
+    }
+  ]
+}
