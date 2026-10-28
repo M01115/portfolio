@@ -811,7 +811,7 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { width:0; height:0; display:no
   </section>
   <div class="project-nav reveal">
     <button class="proj-nav-btn" data-page="home">← All work</button>
-    <button class="proj-nav-btn" data-page="project-bury">Bury Your Loved Ones →</button>
+    <button class="proj-nav-btn" data-page="project-cartographer">Cartographer →</button>
   </div>
   <footer class="site-footer">
     <span class="footer-copy">© 2026 Morris Zhang</span>
@@ -822,6 +822,9 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { width:0; height:0; display:no
     </div>
   </footer>
 </div>
+
+<!-- PROJECT: CARTOGRAPHER has no page here (2026-10-28). Its project page is the web app itself at cartographer/
+     (built from dnd-city-generator/v3); navigateTo() sends project-cartographer there via PROJECTS[].href. -->
 
 <!-- ═══════════════════════════════════ PROJECT: BURY ═══════════════════════════════════ -->
 <div id="project-bury" class="page">
@@ -890,7 +893,7 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { width:0; height:0; display:no
   </section>
 
   <div class="project-nav reveal in">
-    <button class="proj-nav-btn" data-page="project-umbrella">← Umbrella &amp; Coat</button>
+    <button class="proj-nav-btn" data-page="project-cartographer">← Cartographer</button>
     <button class="proj-nav-btn" data-page="project-swan">The Unfinished Swan →</button>
   </div>
 
@@ -1356,6 +1359,26 @@ const PROJECTS = [
       "url(\"portfolioInformationForClaude/web-images/Umbrella%20and%20Coat/exteriorRender.webp\")",
       "url(\"portfolioInformationForClaude/web-images/Umbrella%20and%20Coat/P9260465.webp\")",
       "url(\"portfolioInformationForClaude/web-images/Umbrella%20and%20Coat/interiorRender.webp\")"
+    ]
+  },
+  {
+    "id": "cartographer",
+    "title": "Cartographer",
+    "desc": "A market corner that grows itself from 1150 to 1650, and can say why every building is there.",
+    "year": "2026",
+    "studio": "Personal project",
+    "instructor": null,
+    "collaborators": null,
+    "discipline": "Interaction Design",
+    "color1": "#D9B8A6",
+    "color2": "#4A2213",
+    "wide": false,
+    "page": "project-cartographer",
+    "href": "cartographer/",
+    "imgs": [
+      "url(\"portfolioInformationForClaude/web-images/Cartographer/map-1650.webp\")",
+      "url(\"portfolioInformationForClaude/web-images/Cartographer/map-1400.webp\")",
+      "url(\"portfolioInformationForClaude/web-images/Cartographer/map-1150.webp\")"
     ]
   },
   {
@@ -3234,10 +3257,20 @@ window.addEventListener('popstate', () => {
   if (Date.now() - _selfBackAt < 1000 && location.hash === '#home') { _selfBackAt = 0; return; }   // our own step back — its transition is already running
   const id = location.hash.slice(1);
   const target = document.getElementById(id);
+  if (externalHref(id)) { navigateTo(id, { fromHistory: true }); return; }
   navigateTo(target && target.classList.contains('page') ? id : 'home', { fromHistory: true });
 });
 
+// A project whose page is a separate web page (PROJECTS[].href, e.g. Cartographer's app) is opened there
+// instead of swapping to an in-page .page. Covers cards, nav buttons, the hash on load and Back/Forward.
+function externalHref(pageId) {
+  const p = PROJECTS.find(q => q.page === pageId && q.href);
+  return p ? p.href : null;
+}
+
 function navigateTo(pageId, opts) {
+  const ext = externalHref(pageId);
+  if (ext) { if (opts && opts.fromHistory) location.replace(ext); else location.href = ext; return; }
   const current = document.querySelector('.page.active');
   if (current && current.id === pageId) return;
   const fromHistory = !!(opts && opts.fromHistory);
@@ -3618,6 +3651,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // restore page from URL hash — survives reload
   const hashPage = location.hash.slice(1);
+  if (externalHref(hashPage)) { location.replace(externalHref(hashPage)); return; }   // old #project-cartographer links
   if (hashPage && hashPage !== 'home' && document.getElementById(hashPage)?.classList.contains('page')) {
     navigateTo(hashPage);
   } else {
