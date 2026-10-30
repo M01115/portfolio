@@ -1,0 +1,227 @@
+<!doctype html>
+<!-- ARCHIVED 2026-10-30 (Morris: no live version should ever show it).
+     The WebGL contour-map hero that used to sit behind / instead of Dog-Deer World on index.html
+     (reduced motion, narrow desktop windows, low-power machines, ?cms=1, and the phone fallback).
+     Moved here verbatim so it can be revived: open this file through any local server.
+     On the site it was <canvas id="hero-canvas"> inside #home .hero-band, started by startHero(). -->
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Contour hero (archived)</title>
+<style>
+html,body{margin:0;height:100%;background:#fff}
+#hero-canvas{position:absolute;inset:0;width:100%;height:100%}
+</style></head><body>
+<canvas id="hero-canvas" width="1691" height="898"></canvas>
+<script>
+// ── HERO CANVAS — WebGL fragment shader, domain-warped FBM, anti-aliased contours ──
+const canvas = document.getElementById('hero-canvas');
+let W, H, t = 0, mx = 0.5, my = 0.5, mouseActive = 0.0, mouseTarget = 0.0;
+const isMobile = window.matchMedia('(hover: none)').matches;
+let isTouching = false;
+let rafId = null;
+let lastFrame = 0;
+const HERO_MIN_DT = 1000 / 30;   // throttle hero to ~30fps — the drift is slow, more frames are wasted GPU
+
+const VS = `#version 300 es
+in vec2 a_pos;
+void main() { gl_Position = vec4(a_pos, 0.0, 1.0); }`;
+
+const FS = `#version 300 es
+precision highp float;
+uniform vec2 u_res;
+uniform float u_t;
+uniform vec2 u_mouse;
+uniform float u_ma;
+out vec4 o;
+
+vec2 h2(vec2 p) {
+  p = vec2(dot(p,vec2(127.1,311.7)),dot(p,vec2(269.5,183.3)));
+  return -1.0 + 2.0*fract(sin(p)*43758.5453);
+}
+float gn(vec2 p) {
+  vec2 i=floor(p),f=fract(p),u=f*f*(3.0-2.0*f);
+  return mix(
+    mix(dot(h2(i),f),               dot(h2(i+vec2(1,0)),f-vec2(1,0)),u.x),
+    mix(dot(h2(i+vec2(0,1)),f-vec2(0,1)),dot(h2(i+vec2(1,1)),f-vec2(1,1)),u.x),
+    u.y);
+}
+float fbm(vec2 p) {
+  float v=0.0,a=0.5;
+  mat2 m=mat2(1.6,1.2,-1.2,1.6);
+  for(int i=0;i<4;i++){v+=a*gn(p);p=m*p;a*=0.5;}
+  return v;
+}
+void main() {
+  vec2 uv = gl_FragCoord.xy/u_res;
+  vec2 p  = vec2(uv.x*u_res.x/u_res.y, uv.y)*2.5;
+  p += vec2(cos(u_t*0.012)*0.8, sin(u_t*0.008)*0.6);
+
+  /* double domain warp — second layer feeds on the first,
+     creating offset, looping curves rather than simple meanders */
+  vec2 q = vec2(fbm(p              + u_t*0.004),
+                fbm(p+vec2(5.2,1.3)+ u_t*0.004));
+  vec2 r = vec2(fbm(q+vec2(1.7,9.2)+ u_t*0.003),
+                fbm(q+vec2(8.3,2.8) + u_t*0.003));
+  float field = fbm(p + 1.4*q + 0.5*r);
+  float d = length(uv-u_mouse);
+  field  += u_ma*exp(-d*d*8.0)*1.6;
+
+  /* portfolio palette */
+  vec3 bg   = vec3(255.0,255.0,255.0)/255.0;  /* #FFFFFF — matches the new site background */
+  vec3 ink  = vec3(22.0, 20.0, 16.0) /255.0;  /* #161410 near-black         */
+  /* BYLO — one hue per compass edge */
+  vec3 colR = vec3(160.0, 64.0, 56.0)/255.0;  /* #A04038 terracotta → right */
+  vec3 colL = vec3(122.0,152.0,135.0)/255.0;  /* #7A9887 mint sky   → left  */
+  vec3 colU = vec3(208.0,120.0,133.0)/255.0;  /* #D07885 rose sky   → up    */
+  vec3 colD = vec3( 90.0,128.0, 56.0)/255.0;  /* #5A8038 meadow     → down  */
+  vec3 col  = bg;
+
+  /* each hue bleeds from its canvas edge as the cursor approaches that side */
+  vec3 lineCol = ink;
+  lineCol = mix(lineCol, colR, uv.x       * u_mouse.x        * 0.92);
+  lineCol = mix(lineCol, colL, (1.0-uv.x) * (1.0-u_mouse.x) * 0.92);
+  lineCol = mix(lineCol, colU, uv.y       * u_mouse.y        * 0.92);
+  lineCol = mix(lineCol, colD, (1.0-uv.y) * (1.0-u_mouse.y) * 0.92);
+
+  float edgeFade = smoothstep(0.0,0.12,1.0-uv.y);
+
+  float fw = fwidth(field);
+  /* 9 terrain + 9 cursor-peak layers — same spacing and opacity curve */
+  float[18] tr=float[18](-0.60,-0.43,-0.26,-0.09, 0.08, 0.25, 0.42, 0.59, 0.74,
+                           0.91, 1.08, 1.25, 1.42, 1.59, 1.76, 1.93, 2.10, 2.27);
+  float[18] op=float[18]( 0.07, 0.10, 0.13, 0.16, 0.18, 0.16, 0.13, 0.10, 0.07,
+                           0.07, 0.10, 0.13, 0.16, 0.18, 0.16, 0.13, 0.10, 0.07);
+  for(int i=0;i<18;i++){
+    float line=1.0-smoothstep(0.0,fw*0.9,abs(field-tr[i]));
+    col=mix(col,lineCol,line*op[i]*edgeFade);
+  }
+  o=vec4(col,1.0);
+}`;
+
+const gl = canvas.getContext('webgl2');
+
+(function setupGL() {
+  function mkShader(type, src) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src); gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS))
+      console.error('Shader:', gl.getShaderInfoLog(s));
+    return s;
+  }
+  const prog = gl.createProgram();
+  gl.attachShader(prog, mkShader(gl.VERTEX_SHADER, VS));
+  gl.attachShader(prog, mkShader(gl.FRAGMENT_SHADER, FS));
+  gl.linkProgram(prog);
+
+  const vao = gl.createVertexArray();
+  gl.bindVertexArray(vao);
+  const vbo = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,1,-1,-1,1,1,1]), gl.STATIC_DRAW);
+  const loc = gl.getAttribLocation(prog, 'a_pos');
+  gl.enableVertexAttribArray(loc);
+  gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+
+  const uRes=gl.getUniformLocation(prog,'u_res'), uT=gl.getUniformLocation(prog,'u_t'),
+        uMouse=gl.getUniformLocation(prog,'u_mouse'), uMa=gl.getUniformLocation(prog,'u_ma');
+
+  window._heroGL = { prog, vao, uRes, uT, uMouse, uMa };
+})();
+
+function resizeCanvas() {
+  const w = canvas.offsetWidth;
+  if (!w) return;                        // canvas in a hidden page — skip
+  // Render at a capped backing resolution and let CSS upscale. The soft contour
+  // field hides the difference, and it sharply cuts per-pixel shader cost on big screens.
+  const HERO_MAX_W = 1600;
+  const scale = Math.min(1, HERO_MAX_W / w);
+  W = canvas.width  = Math.max(1, Math.round(w * scale));
+  H = canvas.height = Math.max(1, Math.round(canvas.offsetHeight * scale));
+  gl.viewport(0, 0, W, H);
+}
+
+function startHero() {
+  // A hidden canvas (the world hero is showing, or #home isn't the active
+  // page) has nothing to draw. resizeCanvas() bails on it but leaves the old
+  // W/H set, so without this check a tab switch (visibilitychange → startHero)
+  // quietly restarted the shader loop behind the world, where it kept running.
+  if (!canvas.offsetWidth) return;
+  resizeCanvas();
+  if (W && H && !rafId) rafId = requestAnimationFrame(drawTerrain);
+}
+
+function drawTerrain(now) {
+  rafId = requestAnimationFrame(drawTerrain);
+  now = now || performance.now();
+  if (now - lastFrame < HERO_MIN_DT) return;   // cap to ~30fps
+  lastFrame = now;
+  mouseActive += (mouseTarget - mouseActive) * 0.1;   // ×2 of old 0.05 to match 30fps cadence
+  if (isMobile && !isTouching) {
+    mx = 0.35 + Math.sin(t * 0.8) * 0.30;
+    my = 0.50 + Math.sin(t * 0.6 + 1.2) * 0.22;
+    mouseTarget = 0.4;
+  }
+  const { prog, vao, uRes, uT, uMouse, uMa } = window._heroGL;
+  gl.useProgram(prog);
+  gl.bindVertexArray(vao);
+  gl.uniform2f(uRes, W, H);
+  gl.uniform1f(uT, t);
+  gl.uniform2f(uMouse, mx, my);
+  gl.uniform1f(uMa, mouseActive);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  t += 0.01;   // ×2 of old 0.005 → same wall-clock drift at 30fps
+}
+
+function pauseHero() { if (rafId) { cancelAnimationFrame(rafId); rafId = null; } }
+
+// Pause the shader when the hero isn't on screen (scrolled past, or another page) —
+// no point burning GPU on pixels nobody can see.
+if ('IntersectionObserver' in window) {
+  new IntersectionObserver(function(entries) {
+    if (entries[0].isIntersecting) startHero(); else pauseHero();
+  }, { threshold: 0 }).observe(canvas);
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) pauseHero(); else startHero();
+});
+
+document.addEventListener('mousemove', e => {
+  if (isMobile) return;
+  const r = canvas.getBoundingClientRect();
+  if (e.clientX >= r.left && e.clientX <= r.right &&
+      e.clientY >= r.top  && e.clientY <= r.bottom) {
+    mx = (e.clientX - r.left) / r.width;
+    my = 1.0 - (e.clientY - r.top) / r.height;
+    mouseTarget = 1.0;
+  } else {
+    mouseTarget = 0.0;
+  }
+});
+
+document.addEventListener('mouseleave', () => {
+  if (!isMobile) mouseTarget = 0.0;
+});
+
+canvas.addEventListener('touchstart', e => {
+  isTouching = true;
+  const r = canvas.getBoundingClientRect(), touch = e.touches[0];
+  mx = (touch.clientX - r.left) / r.width;
+  my = 1.0 - (touch.clientY - r.top) / r.height;
+  mouseTarget = 1.0;
+}, { passive: true });
+
+canvas.addEventListener('touchmove', e => {
+  const r = canvas.getBoundingClientRect(), touch = e.touches[0];
+  mx = (touch.clientX - r.left) / r.width;
+  my = 1.0 - (touch.clientY - r.top) / r.height;
+  mouseTarget = 1.0;
+}, { passive: true });
+
+canvas.addEventListener('touchend', () => {
+  isTouching = false;
+  mouseTarget = 0.0;
+});
+
+window.addEventListener('resize', resizeCanvas);
+startHero();
+</script></body></html>
