@@ -44,8 +44,8 @@ nav.nav-preload { opacity:0; }   /* start hidden for the staggered load-in (opac
 }
 .nav-links { display:flex; gap:28px; align-items:center; }
 .nav-link {
-  font-family:var(--sans); font-size:11px; font-weight:400;
-  letter-spacing:.08em; text-transform:uppercase;
+  font-family:var(--sans); font-size:13px; font-weight:400;   /* 11px → 13px 2026-10-29 with the nav tabs (no UI text under 13px) */
+  letter-spacing:.06em; text-transform:uppercase;
   color:var(--muted); text-decoration:none; transition:color .2s; cursor:pointer;
 }
 .nav-link:hover { color:var(--fg); }
@@ -157,7 +157,29 @@ body.deer-loading .cursor-dot, body.deer-loading .cursor-ring { display:none; }
 .projects-section-label span {
   font-family:var(--sans); font-size:10px; color:var(--muted); font-weight:400; letter-spacing:.04em; text-transform:none;
 }
-.project-stream { display:block; }
+.project-stream { display:block; transition:opacity .15s ease; }
+.project-stream.tab-fading { opacity:0; }
+
+/* ── TABS ── All | Architecture | HCI. Bar under the hero (every width); the same
+   three in the nav on desktop only (phones use the bar). Readable size, no tiny caps. */
+.tab-bar {
+  display:flex; flex-wrap:nowrap; gap:clamp(20px,3.2vw,40px); align-items:baseline;
+  padding:14px 0 12px; margin-bottom:clamp(8px,2vw,24px);
+  border-bottom:1px solid var(--border);
+  scroll-margin-top:44px;
+}
+.tab-link {
+  font-family:var(--sans); font-size:16px; font-weight:400; letter-spacing:.01em;
+  color:var(--muted); text-decoration:none; cursor:pointer; white-space:nowrap;
+  padding:4px 0; border-bottom:1px solid transparent; transition:color .2s, border-color .2s;
+}
+.tab-link:hover { color:var(--fg); }
+.tab-link[aria-current="true"] { color:var(--fg); border-bottom-color:var(--fg); }
+.tab-count { font-size:13px; margin-left:6px; color:var(--muted); font-variant-numeric:tabular-nums; }
+.tab-link:focus-visible, .nav-tab:focus-visible { outline:1px solid var(--accent); outline-offset:4px; }
+.nav-tab[aria-current="true"] { color:var(--fg); }
+@media(max-width:640px) { .nav-tab { display:none; } }
+.sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0; }
 
 /* ── PROJECT INDEX — cinematic pinned scenes (GSAP/ScrollTrigger, native scroll) ── */
 .project-scene {
@@ -713,6 +735,9 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { width:0; height:0; display:no
 <nav>
   <a class="nav-name" data-page="home" id="nav-home" aria-label="Morris Zhang, home"><span class="nav-name-txt">Morris Zhang</span></a>
   <div class="nav-links">
+    <a class="nav-link nav-tab" href="#all" data-tab="all">All</a>
+    <a class="nav-link nav-tab" href="#architecture" data-tab="architecture">Architecture</a>
+    <a class="nav-link nav-tab" href="#hci" data-tab="hci">HCI</a>
     <a class="nav-link" data-page="about">About</a>
   </div>
 </nav>
@@ -730,6 +755,13 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { width:0; height:0; display:no
   </section>
 
   <section class="projects-section">
+    <!-- tab state (aria-current, counts, live text) is set at runtime by setTab/markTabs, never saved into the file -->
+    <div class="tab-bar" id="tab-bar" aria-label="Show projects">
+      <a class="tab-link" href="#all" data-tab="all">All<span class="tab-count"></span></a>
+      <a class="tab-link" href="#architecture" data-tab="architecture">Architecture<span class="tab-count"></span></a>
+      <a class="tab-link" href="#hci" data-tab="hci">HCI<span class="tab-count"></span></a>
+    </div>
+    <p class="sr-only" id="tab-live" aria-live="polite"></p>
     <div class="project-stream" id="project-stream"></div>
   </section>
 
@@ -1567,6 +1599,8 @@ const PROJECTS = [
     "color2": "#343538",
     "wide": false,
     "page": "project-ohiopyle",
+    "tags": ["arch", "hci"],
+    "hciOrder": 4,
     "numOnDark": true,
     "imgs": [
       "url(\"portfolioInformationForClaude/web-images/Ohiopyle%20Decay%20Maps/IMG_3140.webp\")",
@@ -1587,6 +1621,7 @@ const PROJECTS = [
     "color2": "#3A3E36",
     "wide": true,
     "page": "project-umbrella",
+    "tags": ["arch"],
     "imgs": [
       "url(\"portfolioInformationForClaude/web-images/Umbrella%20and%20Coat/exteriorRender.webp\")",
       "url(\"portfolioInformationForClaude/web-images/Umbrella%20and%20Coat/P9260465.webp\")",
@@ -1606,6 +1641,8 @@ const PROJECTS = [
     "color2": "#4A2213",
     "wide": false,
     "page": "project-cartographer",
+    "tags": ["hci"],
+    "hciOrder": 1,
     "href": "cartographer/",
     "imgs": [
       "url(\"portfolioInformationForClaude/web-images/Cartographer/map-1650.webp\")",
@@ -1626,6 +1663,7 @@ const PROJECTS = [
     "color2": "#3D1E0F",
     "wide": true,
     "page": "project-bury",
+    "tags": ["arch"],
     "imgs": [
       "url(\"portfolioInformationForClaude/web-images/Bury%20Your%20Loved%20Ones/fromCemetery%20copy.webp\")",
       "url(\"portfolioInformationForClaude/web-images/Bury%20Your%20Loved%20Ones/DSC_0977.webp\")",
@@ -1645,6 +1683,7 @@ const PROJECTS = [
     "color2": "#4A1C17",
     "wide": false,
     "page": "project-asceticism",
+    "tags": ["arch"],
     "numOnDark": true,
     "imgs": [
       "url(\"portfolioInformationForClaude/web-images/Asceticism%20and%20Another/objectHeld.webp\")",
@@ -1665,6 +1704,7 @@ const PROJECTS = [
     "color2": "#3A4850",
     "wide": false,
     "page": "project-swan",
+    "tags": ["arch"],
     "imgs": [
       "url(\"portfolioInformationForClaude/web-images/embedded/emb-3.webp\")",
       "url(\"portfolioInformationForClaude/web-images/unfinished%20Swan/IMG_9549.webp\")",
@@ -1684,6 +1724,8 @@ const PROJECTS = [
     "color2": "#3D2B1A",
     "wide": false,
     "page": "project-epstein",
+    "tags": ["hci", "arch"],
+    "hciOrder": 2,
     "numOnDark": true,
     "imgs": [
       "url(\"portfolioInformationForClaude/web-images/Epstein%20List/APC_2049.webp\")",
@@ -1704,6 +1746,7 @@ const PROJECTS = [
     "color2": "#8AAE70",
     "wide": true,
     "page": "project-roots",
+    "tags": ["arch"],
     "numOnDark": true,
     "imgs": [
       "url(\"portfolioInformationForClaude/web-images/Between%20Roots/DSC03841.webp\")",
@@ -1724,6 +1767,7 @@ const PROJECTS = [
     "color2": "#3D3850",
     "wide": false,
     "page": "project-stones",
+    "tags": ["arch"],
     "numOnDark": true,
     "imgs": [
       "url(\"portfolioInformationForClaude/web-images/Sticks%20and%20Stones/chairRenderFinal.webp\")",
@@ -1744,19 +1788,66 @@ const PROJECTS = [
     "color2": "#4A3C2E",
     "wide": false,
     "page": "project-cities",
+    "tags": ["arch"],
     "imgs": [
       "url(\"portfolioInformationForClaude/web-images/Cities%3B%20Impractical/20250501_172217.webp\")",
       "url(\"portfolioInformationForClaude/web-images/Cities%3B%20Impractical/20250501_165612.webp\")",
       "url(\"portfolioInformationForClaude/web-images/Cities%3B%20Impractical/20250501_172833.webp\")"
     ]
+  },
+  {
+    "id": "dogdeer",
+    "title": "Dog-Deer World",
+    "desc": "Dog Deer started as a napkin sketch, now he lives near Walden Pond and wanders through the forest.",
+    "year": "2026",
+    "studio": "Personal project",
+    "instructor": null,
+    "collaborators": null,
+    "discipline": "Interaction Design",
+    "color1": "#C9D3A6",
+    "color2": "#2E4630",
+    "wide": false,
+    "page": "project-dogdeer",
+    "tags": ["hci"],
+    "hciOrder": 3,
+    "href": "dogdeer-world.html",
+    "imgs": [
+      "url(\"portfolioInformationForClaude/web-images/Dog-Deer%20World/summer.webp\")",
+      "url(\"portfolioInformationForClaude/web-images/Dog-Deer%20World/autumn.webp\")",
+      "url(\"portfolioInformationForClaude/web-images/Dog-Deer%20World/winter.webp\")"
+    ]
   }
 ];
 
-function buildProjectStream() {
+// list = the projects of one tab, in order. Card number and left/right side come from the
+// position in THIS list, so every tab reads 01..n and alternates cleanly.
+function buildProjectStream(list = PROJECTS) {
   const stream = document.getElementById('project-stream');
   stream.innerHTML = '';
-  PROJECTS.forEach((p, idx) => stream.appendChild(buildScene(p, idx)));
+  list.forEach((p, idx) => stream.appendChild(buildScene(p, idx)));
 }
+
+// ── TABS: All | Architecture | HCI (2026-10-29, arch-hci-split-design.md) ──
+// Projects carry tags (a project can sit in both tabs). The tabs are links (#all,
+// #architecture, #hci); the current tab is runtime state only, written by setTab.
+const TAB_LABEL = { all: 'All', architecture: 'Architecture', hci: 'HCI' };
+const TAB_TAG = { architecture: 'arch', hci: 'hci' };
+let currentTab = 'all';
+let _drawnTab = null;          // tab the stream was last drawn for
+let _navTab = null;            // tab the nav marks while a project page is open
+function normTab(hash) {       // '' / home / all → 'all'; architecture / hci → itself; anything else → null
+  const h = String(hash || '').replace(/^#/, '');
+  if (h === '' || h === 'home' || h === 'all') return 'all';
+  return TAB_TAG[h] ? h : null;
+}
+function listFor(tab) {
+  if (tab === 'all' || !TAB_TAG[tab]) return PROJECTS.slice();
+  const list = PROJECTS.filter(p => (p.tags || []).includes(TAB_TAG[tab]));
+  // the HCI tab leads with a live project; a future HCI entry with no hciOrder sorts last
+  if (tab === 'hci') list.sort((a, b) => (a.hciOrder || 99) - (b.hciOrder || 99));
+  return list;
+}
+function tabHash(tab) { return '#' + (tab === 'all' ? 'home' : tab); }   // URL for the home entry under a page
 
 function escapeHTML(s) {
   return String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
@@ -2119,7 +2210,7 @@ function setHomeTint(p) {
 // scrolling smoothly regardless of main-thread load. ScrollTrigger works
 // natively with no bridge (it attaches its own scroll listener to the document).
 let indexMM = null;
-const revealedScenes = new Set();   // scene indices already revealed this session — survives home/project nav so text never re-hides
+const revealedScenes = new Set();   // project ids already revealed this session — survives home/project nav AND tab redraws so text never re-hides
 
 function prefersReducedMotion() {
   return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -2145,8 +2236,9 @@ function initProjectIndex() {
       const pidEl  = scene.querySelector('[data-pid]');
       const proj   = pidEl ? PROJECTS.find(p => p.id === pidEl.dataset.pid) : null;
       const REVEAL_DUR = 0.9;
+      const sid = scene.dataset.pid;
 
-      if (revealedScenes.has(i)) {
+      if (revealedScenes.has(sid)) {
         // already revealed earlier this session — jump straight to the final state, no scroll
         // gate at all, so returning home from a project page never re-hides the text/image.
         gsap.set(media,  { clipPath: 'inset(0% 0% 0% 0%)' });
@@ -2158,7 +2250,7 @@ function initProjectIndex() {
         // scroll-up (no pin, no scrub) — `once:true` also self-kills the trigger after firing.
         const numEl = scene.querySelector('.scene-num-float');
         gsap.timeline({
-          scrollTrigger: { trigger: scene, start: 'top 78%', once: true, onEnter: () => revealedScenes.add(i) },
+          scrollTrigger: { trigger: scene, start: 'top 78%', once: true, onEnter: () => revealedScenes.add(sid) },
           onUpdate: () => { if (numEl && numEl._split) numEl._split(); }   // two-tone number follows the reveal clip
         })
           .fromTo(media,  { clipPath: 'inset(10% 12% 10% 12%)' }, { clipPath: 'inset(0% 0% 0% 0%)', duration: REVEAL_DUR, ease: 'power2.out' }, 0)
@@ -3292,6 +3384,12 @@ function cmsDownload() {
   activeEls.forEach(function(el){ el.classList.remove('active'); });
   if (homeEl) homeEl.classList.add('active');
   document.documentElement.style.backgroundColor = '';   // don't bake a runtime home wash into the export
+  // tab state is runtime-only too: aria-current, counts and the live text are rebuilt at load
+  markTabs(null);
+  const tabCounts = Array.from(document.querySelectorAll('#tab-bar .tab-count')).map(c => { const t = c.textContent; c.textContent = ''; return t; });
+  const tabLive = document.getElementById('tab-live');
+  const tabLiveText = tabLive ? tabLive.textContent : '';
+  if (tabLive) tabLive.textContent = '';
   // outerHTML omits the doctype — prepend it so downloads stay in standards mode
   // (no doctype = quirks mode = body becomes the scroller, which breaks ScrollTrigger's scroll tracking)
   let html = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
@@ -3302,6 +3400,10 @@ function cmsDownload() {
   if (homeEl) homeEl.classList.remove('active');
   activeEls.forEach(function(el){ el.classList.add('active'); });
   stream.innerHTML = savedStream;
+  document.querySelectorAll('#tab-bar .tab-count').forEach((c, i) => { c.textContent = tabCounts[i] || ''; });
+  if (tabLive) tabLive.textContent = tabLiveText;
+  const activePage = document.querySelector('.page.active');
+  markTabs(!activePage || activePage.id === 'home' ? currentTab : activePage.id.indexOf('project-') === 0 ? (_navTab || firstTagTab(activePage.id)) : null);
   document.body.appendChild(panel); document.body.appendChild(trigger);
   // Sync PROJECTS imgs (runtime mutations aren't reflected in the <script> source text)
   html = html.replace(
@@ -3573,28 +3675,140 @@ function runDeerBoot() {
 // pages replaces the top entry instead of stacking; going home in-page steps
 // the browser back rather than pushing a second home entry.
 let _selfBackAt = 0;   // when navigateTo itself called history.back() (its popstate is ignored)
+// The home entry carries the current tab (#hci, #architecture; All = #home), so Back
+// from a project returns to the tab it was opened from.
 function syncHistory(pageId) {
   const onPushedPage = !!(history.state && history.state.ddwPage);
   if (pageId === 'home') {
     // On a pushed page, navigateTo has already stepped back to the home entry
     // (that back may still be landing) — writing now would clobber the page entry.
-    if (!onPushedPage) history.replaceState(null, '', '#home');
+    if (!onPushedPage && normTab(location.hash) !== currentTab) history.replaceState(null, '', tabHash(currentTab));
   } else if (onPushedPage) {
     history.replaceState({ ddwPage: true }, '', '#' + pageId);
   } else {
     // Arriving from home — or opening a project link / reloading directly — make
-    // the entry underneath home, then push this page on top of it.
-    history.replaceState(null, '', '#home');
+    // the entry underneath home (with its tab), then push this page on top of it.
+    history.replaceState(null, '', tabHash(currentTab));
     history.pushState({ ddwPage: true }, '', '#' + pageId);
   }
 }
 window.addEventListener('popstate', () => {
-  if (Date.now() - _selfBackAt < 1000 && location.hash === '#home') { _selfBackAt = 0; return; }   // our own step back — its transition is already running
+  if (Date.now() - _selfBackAt < 1000 && normTab(location.hash)) {
+    // our own step back to the home entry — its transition is already running. If a nav
+    // tab started it, the entry still names the old tab: rewrite it to the chosen one.
+    _selfBackAt = 0;
+    if (normTab(location.hash) !== currentTab) history.replaceState(history.state, '', '#' + currentTab);
+    return;
+  }
   const id = location.hash.slice(1);
-  const target = document.getElementById(id);
   if (externalHref(id)) { navigateTo(id, { fromHistory: true }); return; }
+  const tab = normTab(id);
+  if (tab) {
+    const home = document.getElementById('home');
+    if (home && home.classList.contains('active')) { if (tab !== currentTab) setTab(tab, { land: true, fromHistory: true }); return; }
+    currentTab = tab;                       // swapPage('home') redraws the stream for it
+    navigateTo('home', { fromHistory: true });
+    return;
+  }
+  const target = document.getElementById(id);
   navigateTo(target && target.classList.contains('page') ? id : 'home', { fromHistory: true });
 });
+
+// ── TAB CONTROLLER ── setTab is the only writer of currentTab + the tab hash.
+let _pendingLand = false;      // the next home swap lands with the tab bar at the top
+let _homeReturn = null;        // {tab, y} saved when leaving home, restored on the way back
+const RETURN_KEY = 'home_return';
+function readReturnStore() { try { return JSON.parse(sessionStorage.getItem(RETURN_KEY) || 'null'); } catch (e) { return null; } }
+function clearReturnStore() { try { sessionStorage.removeItem(RETURN_KEY); } catch (e) {} }
+function saveReturn() {
+  _homeReturn = { tab: currentTab, y: Math.round(window.scrollY) };
+  _navTab = currentTab;
+  try { sessionStorage.setItem(RETURN_KEY, JSON.stringify(_homeReturn)); } catch (e) {}   // private mode: memory copy still works in-page
+}
+// Where home opens on a swap back: tab bar at top (nav tab), the saved spot (Back), or the top.
+function takeHomeTarget() {
+  if (_pendingLand) { _pendingLand = false; _homeReturn = null; clearReturnStore(); return 'land'; }
+  const r = _homeReturn || readReturnStore();
+  _homeReturn = null; clearReturnStore();
+  return (r && r.tab === currentTab) ? r.y : 0;
+}
+window.addEventListener('pageshow', e => { if (e.persisted) { _homeReturn = null; clearReturnStore(); } });   // bfcache: page is intact as left
+
+function markTabs(tab) {       // null clears (About)
+  document.querySelectorAll('[data-tab]').forEach(a => {
+    if (a.dataset.tab === tab) a.setAttribute('aria-current', 'true'); else a.removeAttribute('aria-current');
+  });
+}
+function fillTabCounts() {     // derived from tags, never typed
+  document.querySelectorAll('#tab-bar [data-tab]').forEach(a => {
+    const c = a.querySelector('.tab-count');
+    if (c) c.textContent = listFor(a.dataset.tab).length;
+  });
+}
+function firstTagTab(pageId) {  // direct link to a project: the nav marks its first tag
+  const p = PROJECTS.find(q => q.page === pageId);
+  const t = p && p.tags && p.tags[0];
+  return t === 'arch' ? 'architecture' : t === 'hci' ? 'hci' : 'all';
+}
+function landingY() {
+  const bar = document.getElementById('tab-bar');
+  const nav = document.querySelector('nav');
+  if (!bar) return 0;
+  return Math.max(0, Math.round(bar.getBoundingClientRect().top + window.scrollY - (nav ? nav.offsetHeight : 44)));
+}
+function scrollInstant(y) { window.scrollTo({ top: y, left: 0, behavior: 'instant' }); }
+function drawStream(tab) {
+  // release any card <video> decoders before the DOM is replaced (iOS caps them)
+  document.querySelectorAll('#project-stream video').forEach(v => { try { v.pause(); v.removeAttribute('src'); v.load(); } catch (e) {} });
+  killProjectIndex();
+  buildProjectStream(listFor(tab));
+  _drawnTab = tab;
+}
+function setTab(tab, opts) {
+  opts = opts || {};
+  if (!TAB_LABEL[tab]) tab = 'all';
+  const home = document.getElementById('home');
+  currentTab = tab;
+  markTabs(tab);
+  if (!(home && home.classList.contains('active'))) {
+    // nav tab from a project or About: go home (steps back, no extra entry); the swap redraws + lands
+    _pendingLand = !!opts.land;
+    navigateTo('home');
+    return;
+  }
+  if (!opts.fromHistory) history.replaceState(history.state, '', '#' + tab);
+  const live = document.getElementById('tab-live');
+  if (live) live.textContent = TAB_LABEL[tab] + ', ' + listFor(tab).length + ' projects';
+  const stream = document.getElementById('project-stream');
+  const apply = () => {
+    if (_drawnTab !== tab) {
+      drawStream(tab);
+      initProjectIndex();
+      if (window.ScrollTrigger) ScrollTrigger.refresh();
+      splitAllNums();
+    }
+    if (opts.land) scrollInstant(landingY());
+    // ScrollTrigger puts the old scroll spot back around its refresh (same as in swapPage),
+    // so re-assert the landing after it. Timers, not rAF: rAF stalls in a background tab
+    // and would leave the list faded out.
+    setTimeout(() => {
+      if (window.ScrollTrigger) ScrollTrigger.refresh();
+      if (opts.land) scrollInstant(landingY());
+      stream.classList.remove('tab-fading');
+    }, 90);
+  };
+  if (prefersReducedMotion() || _drawnTab === tab) { apply(); return; }
+  stream.classList.add('tab-fading');                      // crossfade: 0.15 s out, redraw, 0.15 s in
+  setTimeout(apply, 150);
+}
+// Project page hero number = the number on the card that opened it (per tab);
+// nav buttons and direct links show the All-tab number.
+function setHeroNum(pageId, n) {
+  const el = document.querySelector('#' + pageId + ' .project-hero-num');
+  if (!el) return;
+  const idx = PROJECTS.findIndex(p => p.page === pageId);
+  el.textContent = n || String(idx + 1).padStart(2, '0');
+}
 
 // A project whose page is a separate web page (PROJECTS[].href, e.g. Cartographer's app) is opened there
 // instead of swapping to an in-page .page. Covers cards, nav buttons, the hash on load and Back/Forward.
@@ -3604,10 +3818,19 @@ function externalHref(pageId) {
 }
 
 function navigateTo(pageId, opts) {
+  const leaving = document.querySelector('.page.active');
+  // tab + scroll spot, for Back (in-page or from an external page). Not on a direct project
+  // link at load: home is only marked active in the HTML there, the visitor never saw it.
+  if (leaving && leaving.id === 'home' && pageId !== 'home' && !(opts && opts.direct)) saveReturn();
   const ext = externalHref(pageId);
   if (ext) { if (opts && opts.fromHistory) location.replace(ext); else location.href = ext; return; }
   const current = document.querySelector('.page.active');
-  if (current && current.id === pageId) return;
+  if (current && current.id === pageId) {
+    // the name link while already home (e.g. after a #hci landing): back up to the hero, tab kept
+    if (pageId === 'home' && !(opts && opts.fromHistory)) window.scrollTo({ top: 0, behavior: prefersReducedMotion() ? 'instant' : 'smooth' });
+    return;
+  }
+  if (pageId.indexOf('project-') === 0) setHeroNum(pageId, opts && opts.numEl ? opts.numEl.textContent : null);
   const fromHistory = !!(opts && opts.fromHistory);
   if (pageId === 'home' && !fromHistory && history.state && history.state.ddwPage) {
     _selfBackAt = Date.now();
@@ -3674,26 +3897,33 @@ function swapPage(pageId) {
   const target = document.getElementById(pageId);
   if (target) {
     target.classList.add('active');
-    scrollToTop();
+    // home opens at the tab bar (nav tab), at the spot it was left (Back), or at the top
+    const homeTgt = pageId === 'home' ? takeHomeTarget() : 0;
+    const targetY = () => homeTgt === 'land' ? landingY() : homeTgt;
     syncHistory(pageId);
     if (pageId === 'home') {
       requestAnimationFrame(startHero);
       // Opened directly on a project/About (shared link, reload): the world hero
-      // was never set up at load — do it the first time home is shown.
-      if (!_homeHeroInited) { _homeHeroInited = true; ddwInit(); }
+      // was never set up at load — do it the first time home is shown
+      // (unless a #hci/#architecture landing deferred it until the hero is on screen).
+      if (!_homeHeroInited && !_ddwDeferred) { _homeHeroInited = true; ddwInit(); }
+      if (_drawnTab !== currentTab) drawStream(currentTab);   // a nav tab picked a different tab while away
+      markTabs(currentTab);
       initProjectIndex();                 // (re)build pin triggers against the now-visible home
     } else {
       killProjectIndex();                 // tear down index triggers while home is hidden
       document.documentElement.style.backgroundColor = PARCHMENT;   // drop any home wash
+      markTabs(pageId.indexOf('project-') === 0 ? (_navTab || firstTagTab(pageId)) : null);
       if (pageId.indexOf('project-') === 0) animateProjectEntry(pageId);
     }
+    scrollInstant(targetY());
     // ScrollTrigger must re-measure after the page swap (pages toggle display:none).
     // It SAVES AND RESTORES the current scroll position around a refresh (and around
     // pin revert/build) to avoid a visual jump — which, with native scroll, would
-    // undo the scrollToTop() above and leave the new page scrolled to the old page's
+    // undo the scroll above and leave the new page scrolled to the old page's
     // offset (Lenis used to mask this because its rAF loop re-enforced 0 every frame).
-    // So re-assert the top AFTER the refresh, not just before it.
-    setTimeout(() => { if (window.ScrollTrigger) ScrollTrigger.refresh(); scrollToTop(); }, 90);
+    // So re-assert the target AFTER the refresh, not just before it.
+    setTimeout(() => { if (window.ScrollTrigger) ScrollTrigger.refresh(); scrollInstant(targetY()); }, 90);
     setTimeout(initReveal, 60);
     target.querySelectorAll('.reveal').forEach((el, i) => {
       setTimeout(() => el.classList.add('in'), i * 80);
@@ -3957,10 +4187,30 @@ function ddwInit() {
 if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
 window.scrollTo(0, 0);
 let _homeHeroInited = false;   // ddwInit() has run (at load on home, or on first swap to home)
+let _ddwDeferred = false;      // a #hci/#architecture landing holds the world until the hero shows
+// Tab links land below the hero, so the world would download + compile off screen while the
+// visitor reads cards. Start it only once 10% of the hero band is actually on screen.
+// Call AFTER the landing scroll, so the observer's first check sees the hero gone.
+function deferWorld() {
+  const band = document.querySelector('#home .hero-band');
+  if (!band || !('IntersectionObserver' in window)) { _homeHeroInited = true; ddwInit(); return; }
+  _ddwDeferred = true;
+  const io = new IntersectionObserver(entries => {
+    if (!entries.some(e => e.isIntersecting && e.intersectionRatio >= 0.1)) return;
+    io.disconnect();
+    _ddwDeferred = false;
+    if (!_homeHeroInited) { _homeHeroInited = true; ddwInit(); }
+  }, { threshold: 0.1 });
+  io.observe(band);
+}
 document.addEventListener('DOMContentLoaded', () => {
   window.scrollTo(0, 0);
   runDeerBoot();   // boot loading screen — plays over whatever page/hero initializes underneath
-  buildProjectStream();
+  // parse the tab BEFORE the first build, so #hci draws its own list once
+  currentTab = normTab(location.hash) || 'all';
+  drawStream(currentTab);
+  fillTabCounts();
+  markTabs(currentTab);
   // inject the large hero numeral on each project page (mirrors the home scene number)
   document.querySelectorAll('.project-hero').forEach(hero => {
     const bgEl = hero.querySelector('.project-hero-bg');
@@ -3979,6 +4229,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const el = e.target.closest('[data-page]');
     if (el) { e.preventDefault(); navigateTo(el.dataset.page); }
   });
+  // tab links (bar + desktop nav): plain left-click filters in place; modifier/middle
+  // clicks keep normal link behavior (open #hci in a new tab)
+  document.addEventListener('click', e => {
+    const a = e.target.closest('[data-tab]');
+    if (!a || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    setTab(a.dataset.tab, { land: true });
+  });
 
   initCursor();
   initPixelFX();
@@ -3988,15 +4246,30 @@ document.addEventListener('DOMContentLoaded', () => {
   const hashPage = location.hash.slice(1);
   if (externalHref(hashPage)) { location.replace(externalHref(hashPage)); return; }   // old #project-cartographer links
   if (hashPage && hashPage !== 'home' && document.getElementById(hashPage)?.classList.contains('page')) {
-    navigateTo(hashPage);
+    navigateTo(hashPage, { direct: true });
   } else {
+    // Back from an external page (cartographer/, dogdeer-world.html) reloads this file:
+    // reopen at the saved spot when the browser says it's a Back/Forward and the tab
+    // matches. A fresh paste of #hci is a 'navigate' load → landing rule instead.
+    const navEntry = performance.getEntriesByType ? performance.getEntriesByType('navigation')[0] : null;
+    const saved = readReturnStore();
+    clearReturnStore();
+    const restoreY = (saved && navEntry && navEntry.type === 'back_forward' && saved.tab === currentTab) ? saved.y : null;
+    const tabLanding = currentTab !== 'all';      // #hci / #architecture
     startHero();
-    _homeHeroInited = true;
-    ddwInit();                            // decide + build the interactive world hero (desktop, or LITE on touch)
+    if (!tabLanding) {
+      _homeHeroInited = true;
+      ddwInit();                          // decide + build the interactive world hero (desktop, or LITE on touch)
+    }
     ddwIntroReveal();                     // hide seq now (synchronous) then cascade in — before first paint, no flash
     setTimeout(() => {
       initReveal();
       initProjectIndex();                 // build cinematic pin triggers on first load
+      if (restoreY !== null || tabLanding) {
+        if (window.ScrollTrigger) ScrollTrigger.refresh();
+        scrollInstant(restoreY !== null ? restoreY : landingY());   // under the boot veil
+      }
+      if (tabLanding) setTimeout(deferWorld, 30);   // a timer, not rAF: rAF stalls in a background tab and would strand the world
     }, 80);
   }
 });
