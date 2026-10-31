@@ -223,6 +223,47 @@ body.deer-loading .cursor-dot, body.deer-loading .cursor-ring { display:none; }
 .nav-drop-item:hover { opacity:1; color:var(--fg); }
 .nav-drop-item[aria-current="true"] { color:var(--fg); opacity:1; text-decoration:underline; text-decoration-thickness:2px; text-underline-offset:6px; }
 @media(hover:none) { .nav-dropdown { display:none; } }
+
+/* -- DOCKED TABS (2026-10-30) -- once the bar under the world scrolls up past the nav, the
+   three tabs sit in the middle of the nav and Projects steps aside (it has become them).
+   Scrolling back up undocks. From a scroll they rise into place; from a Projects click
+   they travel in from the Projects link (JS sets the start offset, see dockFromProjects). */
+.nav-tabs {
+  position:absolute; left:50%; top:0; height:44px;
+  display:flex; align-items:center; gap:clamp(18px,2.4vw,30px);
+  transform:translate(-50%, 10px); opacity:0; visibility:hidden; pointer-events:none;
+  transition:opacity .25s ease, transform .4s var(--ease), visibility 0s linear .4s;
+}
+.nav-tab-link {
+  font-family:var(--sans); font-size:13px; font-weight:400; letter-spacing:.06em; text-transform:uppercase;
+  color:var(--muted); opacity:.6; text-decoration:none; cursor:pointer; white-space:nowrap;
+  padding:6px 0; transition:color .2s, opacity .2s;
+}
+.nav-tab-link:hover { opacity:1; }
+.nav-tab-link[aria-current="true"] { color:var(--fg); opacity:1; }
+.nav-tab-link:focus-visible { outline:1px solid var(--accent); outline-offset:4px; }
+.nav-tabs .tab-ink { bottom:8px; }
+body.tabs-docked .nav-tabs {
+  transform:translate(-50%, 0); opacity:1; visibility:visible; pointer-events:auto;
+  transition:opacity .35s ease, transform .55s var(--ease);
+}
+.nav-projects { transition:opacity .3s ease, transform .55s var(--ease), visibility 0s; }
+body.tabs-docked .nav-projects {
+  opacity:0; visibility:hidden; pointer-events:none;
+  transform:translateX(var(--to-center, -16px));
+  transition:opacity .3s ease, transform .55s var(--ease), visibility 0s linear .55s;
+}
+body.tabs-docked .nav-dropdown { display:none; }
+/* phones: room for the tabs - the name text steps out, the deer icon stays */
+@media(max-width:640px) {
+  .nav-tabs { gap:14px; }
+  .nav-tab-link { font-size:12px; letter-spacing:.04em; }
+  .nav-name-txt { transition:opacity .25s ease; }
+  body.tabs-docked .nav-name-txt { opacity:0; pointer-events:none; }
+}
+@media(prefers-reduced-motion:reduce) {
+  .nav-tabs, body.tabs-docked .nav-tabs, .nav-projects, body.tabs-docked .nav-projects { transition:none; }
+}
 .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0; }
 
 /* ── PROJECT INDEX — cinematic pinned scenes (GSAP/ScrollTrigger, native scroll) ── */
@@ -806,6 +847,13 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { width:0; height:0; display:no
 
 <nav>
   <a class="nav-name" data-page="home" id="nav-home" aria-label="Morris Zhang, home"><span class="nav-name-txt">Morris Zhang</span></a>
+  <!-- the tabs dock here (center of the bar) once the bar under the world scrolls past (body.tabs-docked) -->
+  <div class="nav-tabs" id="nav-tabs" aria-label="Show projects">
+    <a class="nav-tab-link" href="#all" data-tab="all">All</a>
+    <a class="nav-tab-link" href="#architecture" data-tab="architecture">Architecture</a>
+    <a class="nav-tab-link" href="#hci" data-tab="hci">HCI</a>
+    <span class="tab-ink" aria-hidden="true"></span>
+  </div>
   <div class="nav-links">
     <!-- Projects: click = scroll to the list; hover (desktop) = the three tabs -->
     <div class="nav-projects">
@@ -3276,8 +3324,9 @@ function cmsDownload() {
   document.documentElement.style.backgroundColor = '';   // don't bake a runtime home wash into the export
   // tab state is runtime-only too: aria-current, the ink line and the live text are rebuilt at load
   markTabs(null);
-  const tabInk = document.querySelector('#tab-bar .tab-ink');
-  if (tabInk) tabInk.removeAttribute('style');            // markTabs below puts it back
+  document.querySelectorAll('.tab-ink').forEach(i => i.removeAttribute('style'));   // markTabs below puts them back
+  const wasDocked = document.body.classList.contains('tabs-docked');
+  document.body.classList.remove('tabs-docked');
   const tabLive = document.getElementById('tab-live');
   const tabLiveText = tabLive ? tabLive.textContent : '';
   if (tabLive) tabLive.textContent = '';
@@ -3292,6 +3341,7 @@ function cmsDownload() {
   activeEls.forEach(function(el){ el.classList.add('active'); });
   stream.innerHTML = savedStream;
   if (tabLive) tabLive.textContent = tabLiveText;
+  if (wasDocked) document.body.classList.add('tabs-docked');
   const activePage = document.querySelector('.page.active');
   markTabs(!activePage || activePage.id === 'home' ? currentTab : activePage.id.indexOf('project-') === 0 ? (_navTab || firstTagTab(activePage.id)) : null);
   document.body.appendChild(panel); document.body.appendChild(trigger);
@@ -3613,14 +3663,62 @@ function markTabs(tab) {       // null clears (About)
   moveInk();
 }
 // the 2px line under the chosen tab slides to it (its own CSS transition)
-function moveInk() {
+function moveInk() {             // the bar under the world AND the docked nav tabs
+  document.querySelectorAll('#tab-bar, #nav-tabs').forEach(bar => {
+    const ink = bar.querySelector('.tab-ink');
+    if (!ink) return;
+    const cur = bar.querySelector('[data-tab][aria-current]');
+    if (!cur || !bar.offsetWidth) { ink.style.width = '0px'; return; }
+    ink.style.width = cur.offsetWidth + 'px';
+    ink.style.transform = 'translateX(' + cur.offsetLeft + 'px)';
+  });
+}
+// -- DOCKING -- the tabs join the nav once the bar under the world has scrolled past it
+let _docked = false;
+let _dockHold = 0;               // until this time, a Projects click owns the docked state (its glide is running)
+function setDocked(on) {
+  if (on === _docked) return;
+  _docked = on;
+  document.body.classList.toggle('tabs-docked', on);
+  if (on) moveInk();
+  else { const w = document.querySelector('.nav-projects'); if (w) w.style.removeProperty('--to-center'); }
+}
+function updateDock() {
+  if (Date.now() < _dockHold) return;
+  const home = document.getElementById('home');
   const bar = document.getElementById('tab-bar');
-  const ink = bar && bar.querySelector('.tab-ink');
-  if (!ink) return;
-  const cur = bar.querySelector('.tab-link[aria-current]');
-  if (!cur || !bar.offsetWidth) { ink.style.width = '0px'; return; }
-  ink.style.width = cur.offsetWidth + 'px';
-  ink.style.transform = 'translateX(' + cur.offsetLeft + 'px)';
+  const nav = document.querySelector('nav');
+  const on = !!(home && home.classList.contains('active') && bar && bar.offsetWidth &&
+    bar.getBoundingClientRect().bottom <= (nav ? nav.offsetHeight : 44));
+  setDocked(on);
+}
+let _dockTick = false;
+window.addEventListener('scroll', () => {
+  if (_dockTick) return; _dockTick = true;
+  setTimeout(() => { _dockTick = false; updateDock(); }, 16);   // a timer, not rAF (rAF stalls in background tabs)
+}, { passive: true });
+window.addEventListener('resize', updateDock);
+// Projects (or one of its tabs) clicked on the home page: Projects slides to the middle and
+// becomes the tabs while the page glides down. Holds the docked state through the glide.
+function dockFromProjects() {
+  const home = document.getElementById('home');
+  if (_docked || !(home && home.classList.contains('active'))) return;
+  const link = document.getElementById('nav-projects'), group = document.getElementById('nav-tabs');
+  const wrap = document.querySelector('.nav-projects');
+  if (!link || !group || !wrap) return;
+  const r = link.getBoundingClientRect();
+  const dx = (r.left + r.width / 2) - window.innerWidth / 2;          // Projects' center -> nav center
+  wrap.style.setProperty('--to-center', (-dx).toFixed(0) + 'px');
+  if (!prefersReducedMotion()) {
+    group.style.transition = 'none';                                  // start the tabs AT the Projects link...
+    group.style.transform = 'translate(calc(-50% + ' + dx.toFixed(0) + 'px), 0) scale(.7)';
+    void group.offsetWidth;
+    group.style.transition = ''; group.style.transform = '';          // ...and let the docked rule carry them to the middle
+  }
+  _dockHold = Date.now() + 1600;
+  setDocked(true);
+  setTimeout(updateDock, 1650);
+  if (document.activeElement && document.activeElement.blur) document.activeElement.blur();   // close the hover menu
 }
 window.addEventListener('resize', moveInk);
 const TAB_ORDER = ['all', 'architecture', 'hci'];
@@ -3906,7 +4004,8 @@ function swapPage(pageId) {
     // undo the scroll above and leave the new page scrolled to the old page's
     // offset (Lenis used to mask this because its rAF loop re-enforced 0 every frame).
     // So re-assert the target AFTER the refresh, not just before it.
-    setTimeout(() => { if (window.ScrollTrigger) ScrollTrigger.refresh(); scrollInstant(targetY()); }, 90);
+    setTimeout(() => { if (window.ScrollTrigger) ScrollTrigger.refresh(); scrollInstant(targetY()); updateDock(); }, 90);
+    updateDock();                        // leaving home undocks at once (no scroll event if already at the top)
     setTimeout(initReveal, 60);
     target.querySelectorAll('.reveal').forEach((el, i) => {
       setTimeout(() => el.classList.add('in'), i * 80);
@@ -4223,7 +4322,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     e.preventDefault();
     const home = document.getElementById('home');
-    if (home && home.classList.contains('active')) smoothScrollTo(landingY());
+    if (home && home.classList.contains('active')) { dockFromProjects(); smoothScrollTo(landingY()); }
     else setTab(currentTab, { land: true });
   });
   // inject the large hero numeral on each project page (mirrors the home scene number)
@@ -4249,6 +4348,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const a = e.target.closest('[data-tab]');
     if (!a || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     e.preventDefault();
+    if (a.classList.contains('nav-drop-item')) dockFromProjects();   // a tab picked from the Projects menu
     setTab(a.dataset.tab, { land: true });
   });
 
