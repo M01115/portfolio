@@ -445,6 +445,54 @@ body.tabs-docked .nav-dropdown { display:none; }
 .project-more summary:focus-visible { outline:2px solid var(--accent-dark); outline-offset:3px; }
 .project-more[open] summary { margin-bottom:1em; }
 .project-more p + p { margin-top:1em; }
+/* ── PUFFOLIO (2026-11-09): live app in a phone frame in the hero, Problem/Approach/Outcome, Puff loops ── */
+@font-face { font-family:'Puff Hand'; src:url('portfolioInformationForClaude/web-images/Puffolio/PuffHand-Regular.woff2') format('woff2'); font-display:swap; }
+.pf-hero { align-items:center; gap:clamp(24px,5vw,72px); justify-content:space-between; }
+.pf-hero .project-hero-content { flex:1 1 0; max-width:560px; align-self:flex-end; }
+.pf-hero .project-hero-bg { animation:none; }
+#project-puffolio .project-hero-num { right:auto; left:clamp(20px,5vw,48px); }
+.pf-title { font-family:'Puff Hand', var(--serif); color:#FFD21F; letter-spacing:0; }
+.pf-actions { margin-top:28px; }
+.pf-open {
+  display:inline-block; padding:12px 20px; border-radius:999px;
+  background:#FFA9D4; color:#161616; text-decoration:none;
+  font-family:var(--sans); font-size:13px; font-weight:400; letter-spacing:.06em; text-transform:uppercase;
+  transition:transform .25s var(--ease), background .25s;
+}
+.pf-open:hover { background:#FFD21F; transform:translateY(-2px); }
+.pf-open:focus-visible { outline:2px solid #FFD21F; outline-offset:3px; }
+.pf-note { margin-top:14px; max-width:420px; font-family:var(--body); font-size:13px; line-height:1.6; color:rgba(240,235,225,.6); }
+.pf-phone {
+  position:relative; z-index:2; flex:0 0 auto;
+  height:min(760px, calc(100vh - 120px)); aspect-ratio:390/844;
+  padding:10px; border-radius:46px; background:#2a2a2a;
+  box-shadow:0 30px 80px rgba(0,0,0,.5), inset 0 0 0 2px #3a3a3a;
+}
+.pf-phone iframe { width:100%; height:100%; border:0; border-radius:36px; background:#F6EFE4; display:block; }
+.pf-blocks h3 {
+  font-family:var(--sans); font-size:11px; font-weight:400; letter-spacing:.14em; text-transform:uppercase;
+  color:var(--muted); margin-bottom:.5em;
+}
+.pf-blocks > div + div { margin-top:1.6em; }
+.pf-expressions {
+  display:grid; grid-template-columns:repeat(6,1fr); gap:8px;
+  background:#F6EFE4; border-radius:2px; padding:clamp(12px,2vw,24px);
+}
+.pf-expressions figure { margin:0; text-align:center; }
+.pf-expressions img { width:100%; height:auto; display:block; }
+.pf-expressions figcaption { font-family:var(--sans); font-size:11px; letter-spacing:.06em; color:var(--muted); margin-top:4px; }
+.pf-type { background:#161616; border-radius:2px; padding:clamp(28px,5vw,64px); }
+.pf-type-sample { font-family:'Puff Hand', var(--serif); font-size:clamp(30px,5vw,60px); line-height:1.1; color:#FFD21F; }
+.pf-type-caption { margin-top:18px; font-family:var(--body); font-size:13px; line-height:1.6; color:rgba(240,235,225,.6); max-width:480px; }
+/* phones: no phone-in-a-phone; the button opens the app full screen */
+@media(max-width:760px) {
+  .pf-phone { display:none; }
+  #project-puffolio .project-hero-bg {
+    background:linear-gradient(to top,#161616 34%,rgba(22,22,22,.15) 72%),
+      url('portfolioInformationForClaude/web-images/Puffolio/card-prompt.webp') center 20%/cover #161616 !important;
+  }
+  .pf-expressions { grid-template-columns:repeat(3,1fr); }
+}
 .project-images { display:flex; flex-direction:column; gap:3px; }
 .project-img-full { width:100%; border-radius:2px; overflow:hidden; }
 .project-img-pair { display:grid; grid-template-columns:1fr 1fr; gap:3px; }
@@ -1125,6 +1173,125 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { width:0; height:0; display:no
 <!-- PROJECT: CARTOGRAPHER has no page here (2026-10-28). Its project page is the web app itself at cartographer/
      (built from dnd-city-generator/v3); navigateTo() sends project-cartographer there via PROJECTS[].href. -->
 
+<!-- ═══════════════════════════════════ PROJECT: PUFFOLIO ═══════════════════════════════════ -->
+<!-- Added 2026-11-09. Hackathon app (team repo M01115/NovaODeer, mobile/). HCI template: the live app first.
+     puffolio/ = Expo web export from branch morris/portfolio-web (app.json: web.output "single",
+     experiments.baseUrl "/portfolio/puffolio"), + one copy of index.html per route so a reload on /draw etc. works
+     on GitHub Pages. No AI key in the build: the AI runs in the app's server routes, which a static export leaves out,
+     so here Puff offers the app's labeled demo sample. The iframe gets its src only when this page opens (swapPage). -->
+<div id="project-puffolio" class="page">
+  <section class="project-hero pf-hero">
+    <div class="project-hero-bg" data-pid="puffolio" style="background:#161616"></div>
+    <div class="project-hero-content">
+      <p class="project-eyebrow reveal">Interaction Design · 2026</p>
+      <h1 class="project-title pf-title reveal" style="transition-delay:.08s">Puffolio</h1>
+      <p class="project-tagline reveal" style="transition-delay:.16s">A sketch a day for everyone who keeps meaning to draw. Any paper, one prompt, a short timer, and Puff tells you what you did well.</p>
+      <div class="pf-actions reveal" style="transition-delay:.24s">
+        <a class="pf-open" href="puffolio/" target="_blank" rel="noopener">Open the app full screen ↗</a>
+        <p class="pf-note">Try today's prompt in the phone. The live AI runs on our team's server, so here Puff shows a saved example of his feedback.</p>
+      </div>
+    </div>
+    <div class="pf-phone reveal" style="transition-delay:.2s">
+      <iframe data-src="puffolio/" title="Puffolio, the app, running live" allow="autoplay" loading="lazy"></iframe>
+    </div>
+  </section>
+  <section class="project-body">
+    <div class="project-meta reveal">
+      <div class="meta-item">
+        <div class="meta-label">Event</div>
+        <div class="meta-value">Nova Hackathon, November 2026<br>Team O Deer</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Team</div>
+        <div class="meta-value">Morris Zhang, Lukas Yao, Alobi Huang, Emily Zhang</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">My part</div>
+        <div class="meta-value">Concept, user research and testing, user flow diagrams, wireframing, prototyping, design system, Puff's rig and animation, the Puff Hand typeface, sound design</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Year</div>
+        <div class="meta-value">2026</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Discipline</div>
+        <div class="meta-value">Interaction Design</div>
+      </div>
+    </div>
+    <div class="project-text pf-blocks reveal">
+      <div>
+        <h3>Problem</h3>
+        <p>Almost everyone wishes they drew more, and almost nobody does. A blank page gives no reason to start today, art communities rank and critique, and progress scatters across notebooks where nobody sees it.</p>
+      </div>
+      <div>
+        <h3>Approach</h3>
+        <p>One shared prompt a day, with a timer the prompt sets. Draw on any paper and scan it, or draw in the app. Puff, a pufferfish, gives two specific compliments and one gentle tip, circled on your sketch, never a score. Friends' sketches unlock after you post.</p>
+      </div>
+      <div>
+        <h3>Outcome</h3>
+        <p>An Expo app running on our own phones, built by four people in one weekend: a mascot with 95 animations, a typeface, 28 sounds, and twenty hand-drawn test sketches so the feed and the AI were tried on real drawings from day one.</p>
+      </div>
+      <details class="project-more">
+        <summary>Four product rules</summary>
+        <ul>
+          <li><b>Positivity first.</b> Reactions are a fixed set of warm emoji. No comments, no like counts, no ranking.</li>
+          <li><b>Post before you peek.</b> The friends feed stays locked until you share today's sketch.</li>
+          <li><b>Never punish.</b> Streak freezes cover a missed day, and going over time still counts.</li>
+          <li><b>Friends only.</b> No public gallery. A beginner will show six friends a bad drawing, never the internet.</li>
+        </ul>
+      </details>
+      <details class="project-more">
+        <summary>How Puff was made</summary>
+        <p>Puff started as a teammate's painting. I split it into layers, cut the mouth out of the body and the pupils out of the eyes so both could move, and stored every layer's position in a JSON file, so the same rig rebuilds inside the app.</p>
+        <p>From that rig, one command renders 19 expressions in every outfit: 95 GIFs and the Lottie files the app plays. When the palette changed, all of them were regenerated overnight without redrawing a line.</p>
+        <p>I also drew the typeface, Puff Hand, shipped as a kit (web CSS, a React Native component, design tokens), and synthesized 28 sea sounds for the app: rising bubbles for good moments, a soft blub for "not yet", never a buzzer.</p>
+      </details>
+    </div>
+
+    <div class="project-images project-img-natural reveal">
+      <div class="project-img-full">
+        <img width="2400" height="900" src="portfolioInformationForClaude/web-images/Puffolio/loop.webp" alt="The daily loop in six phone screens: today's prompt, the 30-second timer, drawing in the app, the streak, Puff's feedback, and the friends feed" loading="lazy" data-pid="puffolio" data-slot="0">
+      </div>
+    </div>
+
+    <div class="pf-expressions reveal" aria-label="Six of Puff's expressions">
+      <figure><img width="260" height="260" src="portfolioInformationForClaude/web-images/Puffolio/puff-drawing.webp" alt="Puff drawing along with a pencil" loading="lazy" data-no-lightbox=""><figcaption>drawing along</figcaption></figure>
+      <figure><img width="260" height="260" src="portfolioInformationForClaude/web-images/Puffolio/puff-nervous.webp" alt="Puff nervous as the timer runs down" loading="lazy" data-no-lightbox=""><figcaption>nervous</figcaption></figure>
+      <figure><img width="260" height="260" src="portfolioInformationForClaude/web-images/Puffolio/puff-thinking.webp" alt="Puff thinking while the AI reads the sketch" loading="lazy" data-no-lightbox=""><figcaption>thinking</figcaption></figure>
+      <figure><img width="260" height="260" src="portfolioInformationForClaude/web-images/Puffolio/puff-proud.webp" alt="Puff proud after you post" loading="lazy" data-no-lightbox=""><figcaption>proud</figcaption></figure>
+      <figure><img width="260" height="260" src="portfolioInformationForClaude/web-images/Puffolio/puff-happy.webp" alt="Puff happy" loading="lazy" data-no-lightbox=""><figcaption>happy</figcaption></figure>
+      <figure><img width="260" height="260" src="portfolioInformationForClaude/web-images/Puffolio/puff-sleepy.webp" alt="Puff sleepy" loading="lazy" data-no-lightbox=""><figcaption>sleepy</figcaption></figure>
+    </div>
+
+    <div class="pf-type reveal">
+      <p class="pf-type-sample">Draw anywhere. Puff is watching, kindly.</p>
+      <p class="pf-type-caption">Puff Hand, the typeface we drew for the app: heavy, hand-cut edges, letters that roll a little off the baseline.</p>
+    </div>
+
+    <div class="project-images reveal">
+      <div class="project-img-full" style="aspect-ratio:4/3;">
+        <img width="1600" height="1200" src="portfolioInformationForClaude/web-images/Puffolio/card-feedback.webp" alt="The streak screen, Puff's feedback with two compliments and one tip, and the feed" loading="lazy" data-pid="puffolio" data-slot="1">
+      </div>
+      <div class="project-img-pair">
+        <div style="aspect-ratio:4/3;"><img width="1600" height="1200" src="portfolioInformationForClaude/web-images/Puffolio/card-prompt.webp" alt="Today's prompt, the timer and the drawing screen" loading="lazy" data-pid="puffolio" data-slot="2"></div>
+        <div style="aspect-ratio:4/3;"><img width="1600" height="1200" src="portfolioInformationForClaude/web-images/Puffolio/card-feed.webp" alt="Friends' deer sketches with emoji reactions, and the sketch archive" loading="lazy" data-pid="puffolio" data-slot="3"></div>
+      </div>
+    </div>
+  </section>
+  <div class="project-nav reveal">
+    <button class="proj-nav-btn" data-page="project-cartographer">← Cartographer</button>
+    <button class="proj-nav-btn" data-page="project-bury">Bury Your Loved Ones →</button>
+  </div>
+  <footer class="site-footer">
+    <span class="footer-copy">© 2026 Morris Zhang</span>
+    <div class="footer-links">
+      <a href="https://www.linkedin.com/in/morris-mingqian-zhang-94a314273/" class="footer-link" target="_blank">LinkedIn</a>
+      <a href="https://www.instagram.com/mzmadethese/?hl=en" class="footer-link" target="_blank">Instagram</a>
+      <a href="mailto:zmq0511@gmail.com" class="footer-link">zmq0511@gmail.com</a>
+    </div>
+  </footer>
+</div>
+
 <!-- ═══════════════════════════════════ PROJECT: BURY ═══════════════════════════════════ -->
 <div id="project-bury" class="page">
 
@@ -1192,7 +1359,7 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { width:0; height:0; display:no
   </section>
 
   <div class="project-nav reveal in">
-    <button class="proj-nav-btn" data-page="project-cartographer">← Cartographer</button>
+    <button class="proj-nav-btn" data-page="project-puffolio">← Puffolio</button>
     <button class="proj-nav-btn" data-page="project-asceticism">Asceticism and Another →</button>
   </div>
 
@@ -1731,7 +1898,7 @@ const PROJECTS = [
     "wide": false,
     "page": "project-ohiopyle",
     "tags": ["arch", "hci"],
-    "hciOrder": 4,
+    "hciOrder": 5,
     "numOnDark": true,
     "imgs": [
       "url(\"portfolioInformationForClaude/web-images/Ohiopyle%20Decay%20Maps/IMG_3140.webp\")",
@@ -1779,6 +1946,27 @@ const PROJECTS = [
       "url(\"portfolioInformationForClaude/web-images/Cartographer/map-1650.webp\")",
       "url(\"portfolioInformationForClaude/web-images/Cartographer/map-1400.webp\")",
       "url(\"portfolioInformationForClaude/web-images/Cartographer/map-1150.webp\")"
+    ]
+  },
+  {
+    "id": "puffolio",
+    "title": "Puffolio",
+    "desc": "A sketch a day for people who keep meaning to draw; Puff the pufferfish tells you what you did well, never a score.",
+    "year": "2026",
+    "studio": "Nova Hackathon, team O Deer",
+    "instructor": null,
+    "collaborators": "Lukas Yao, Alobi Huang, Emily Zhang",
+    "discipline": "Interaction Design",
+    "color1": "#F6E7B0",
+    "color2": "#161616",
+    "wide": false,
+    "page": "project-puffolio",
+    "tags": ["hci"],
+    "hciOrder": 2,
+    "imgs": [
+      "url(\"portfolioInformationForClaude/web-images/Puffolio/card-prompt.webp\")",
+      "url(\"portfolioInformationForClaude/web-images/Puffolio/card-feedback.webp\")",
+      "url(\"portfolioInformationForClaude/web-images/Puffolio/card-feed.webp\")"
     ]
   },
   {
@@ -1856,7 +2044,7 @@ const PROJECTS = [
     "wide": false,
     "page": "project-epstein",
     "tags": ["hci", "arch"],
-    "hciOrder": 2,
+    "hciOrder": 3,
     "numOnDark": true,
     "imgs": [
       "url(\"portfolioInformationForClaude/web-images/Epstein%20List/APC_2049.webp\")",
@@ -1940,7 +2128,7 @@ const PROJECTS = [
     "wide": false,
     "page": "project-dogdeer",
     "tags": ["hci"],
-    "hciOrder": 3,
+    "hciOrder": 4,
     "href": "dogdeer-world.html",
     "imgs": [
       "url(\"portfolioInformationForClaude/web-images/Dog-Deer%20World/summer.webp\")",
@@ -3875,7 +4063,8 @@ async function animateTabSwitch(tab, opts, run) {
   });
   const leaving = ghosts.filter(g => !g.used).map(g => g.el);
   if (leaving.length) gsap.to(leaving, { x: -dir * 120, opacity: 0, duration: 0.32, ease: 'power2.in', stagger: 0.04 });
-  await _wait(1250);
+  // wait for the last slide-in (each extra new card starts 90 ms later), never less than 1.25 s
+  await _wait(Math.max(1250, Math.round((0.36 + Math.max(0, n - 1) * 0.09 + 0.7) * 1000) + 150));
   leaving.forEach(el => el.remove());
   if (run !== _tabRun) return;
   if (window.ScrollTrigger) ScrollTrigger.refresh();
@@ -3979,6 +4168,8 @@ function swapPage(pageId) {
   const target = document.getElementById(pageId);
   if (target) {
     target.classList.add('active');
+    // a live embed (Puffolio's app) loads only once its page is opened, never with the homepage
+    target.querySelectorAll('iframe[data-src]').forEach(f => { if (!f.getAttribute('src')) f.src = f.dataset.src; });
     // home opens at the tab bar (nav tab), at the spot it was left (Back), or at the top
     const homeTgt = pageId === 'home' ? takeHomeTarget() : 0;
     const targetY = () => homeTgt === 'land' ? landingY() : homeTgt;
