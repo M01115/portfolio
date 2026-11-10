@@ -23,7 +23,7 @@
   --edge-pad: clamp(8px,1.5vw,16px);   /* shared L/R inset for nav + hero-identity so their edges line up exactly */
 }
 *,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
-html { font-family:var(--body); background:var(--bg); color:var(--fg); transition:background-color .7s ease; }  /* native scroll (Lenis removed 2026-07-21); bg-color eased for the per-project home wash */
+html { font-family:var(--body); background:var(--bg); color:var(--fg); }  /* native scroll (Lenis removed 2026-07-21); always white (per-project wash removed 2026-11-09) */
 html { overflow-x:hidden; }  /* clip horizontal overflow on the ROOT so the document (not body) stays the scroller — ScrollTrigger assumes window/documentElement scrolling */
 .page { display:none; }
 .page.active { display:block; }
@@ -34,7 +34,7 @@ nav {
   height:44px; padding:0 var(--edge-pad);
   display:flex; justify-content:space-between; align-items:center;
   background:var(--bg);
-  transition:background-color .7s ease, opacity .5s var(--ease);
+  transition:opacity .5s var(--ease);
 }
 nav.nav-preload { opacity:0; }   /* start hidden for the staggered load-in (opacity only — transform is the ride-up's) */
 .nav-name {
@@ -210,7 +210,7 @@ body.deer-loading .cursor-dot, body.deer-loading .cursor-ring { display:none; }
 }
 .nav-dropdown::before {   /* the panel, below the bridge */
   content:''; position:absolute; inset:8px 0 0; z-index:-1;
-  background:var(--home-wash, var(--bg)); border:1px solid var(--border); border-radius:2px;
+  background:var(--bg); border:1px solid var(--border); border-radius:2px;
   box-shadow:0 10px 30px rgba(22,20,16,.08);
 }
 .nav-projects:hover .nav-dropdown, .nav-projects:focus-within .nav-dropdown {
@@ -311,10 +311,10 @@ body.tabs-docked .nav-dropdown { display:none; }
 /* Two-tone number on dark thumbnails (2026-10-27, Morris's idea): a page-coloured copy of the
    numeral, clipped to the part that sits over the photo. JS (initNumSplit) adds .on-dark only when
    the photo under the number is dark, and keeps --num-t/--num-l/--num-r matched to the visible
-   image edges (reveal clip, hover tilt, resize). --home-wash follows the home background tint. */
+   image edges (reveal clip, hover tilt, resize). The copy is page white. */
 .scene-num-float::after {
   content:attr(data-n); position:absolute; inset:0; display:none;
-  color:var(--home-wash,#FFFFFF); text-shadow:none; transition:color .7s ease;
+  color:var(--bg); text-shadow:none;
   clip-path:inset(var(--num-t,100%) var(--num-r,0px) 0 var(--num-l,0px));
 }
 .scene-num-float.on-dark::after { display:block; }
@@ -2201,7 +2201,7 @@ function buildScene(p, idx) {
   numFloat.className = 'scene-num-float';
   numFloat.textContent = String(idx + 1).padStart(2, '0');
   numFloat.dataset.n = numFloat.textContent;   // the ::after copy for the two-tone number
-  const navOpts = () => ({ numEl: numFloat, veilColor: projectTone(p).dark });
+  const navOpts = () => ({ numEl: numFloat });
   media.addEventListener('click', () => navigateTo(p.page, navOpts()));
   mediaWrap.appendChild(media);
   mediaWrap.appendChild(numFloat);
@@ -2507,33 +2507,8 @@ function splitAllNums() {
 }
 window.addEventListener('resize', function() { requestAnimationFrame(splitAllNums); });
 
-// ── colour helpers — per-project theme tones derived from PROJECTS color1/color2 ──
-function _hexRgb(h) { h = h.replace('#', ''); return { r: parseInt(h.slice(0,2),16), g: parseInt(h.slice(2,4),16), b: parseInt(h.slice(4,6),16) }; }
-function _lum(h) { const c = _hexRgb(h); return 0.2126*c.r + 0.7152*c.g + 0.0722*c.b; }
-// color1/color2 are the same hue at two lightnesses — split into the lighter (for the
-// subtle page wash) and the darker (for the click-transition veil, which bridges to the
-// project hero's dark gradient).
-function projectTone(p) {
-  const a = p.color1, b = p.color2;
-  return _lum(a) >= _lum(b) ? { light: a, dark: b } : { light: b, dark: a };
-}
-function _mixHex(h1, h2, t) {
-  const a = _hexRgb(h1), b = _hexRgb(h2);
-  return 'rgb(' + Math.round(a.r+(b.r-a.r)*t) + ',' + Math.round(a.g+(b.g-a.g)*t) + ',' + Math.round(a.b+(b.b-a.b)*t) + ')';
-}
-const PARCHMENT = '#FFFFFF';   // base page background (renamed-in-spirit-only: still the "reset to base" constant the wash/veil code blends toward)
-
-// subtle background wash on the home page — tweens the page bg toward the focused
-// project's lighter tone (low blend, never flashy). null → back to parchment.
-function setHomeTint(p) {
-  // raw inline set, eased by the `html { transition:background-color }` rule — GSAP won't
-  // write inline styles onto document.documentElement, so don't route this through it.
-  const target = p ? _mixHex(PARCHMENT, projectTone(p).light, 0.16) : PARCHMENT;
-  document.documentElement.style.backgroundColor = target;
-  document.documentElement.style.setProperty('--home-wash', target);   // two-tone scene numbers match the wash
-  const nav = document.querySelector('nav');
-  if (nav) nav.style.backgroundColor = target;
-}
+const PARCHMENT = '#FFFFFF';   // page + transition-veil colour. Always white: the per-project home wash and
+                               // coloured project veil were removed 2026-11-09 (Morris: "background everywhere just white").
 
 // ── NATIVE SCROLL + CINEMATIC PIN/REVEAL (GSAP ScrollTrigger) ──
 // Native scroll (Lenis smooth-scroll removed 2026-07-21): matches mrmrs.cc's
@@ -2592,17 +2567,6 @@ function initProjectIndex() {
           .fromTo(inner,  { scale: 1.12 }, { scale: 1, duration: REVEAL_DUR, ease: 'power2.out' }, 0)
           .fromTo(words,  { yPercent: 120 }, { yPercent: 0, duration: REVEAL_DUR, stagger: 0.05, ease: 'power3.out' }, 0.05)
           .fromTo(extras, { y: 26, opacity: 0 }, { y: 0, opacity: 1, duration: REVEAL_DUR, stagger: 0.05, ease: 'power2.out' }, 0.12);
-      }
-
-      // color wash stays scroll-linked and reversible (independent of the one-shot reveal above)
-      // so the home bg still eases toward each project's tone as you scroll past it either way.
-      if (proj) {
-        ScrollTrigger.create({
-          trigger: scene, start: 'top 65%', end: 'bottom 35%',
-          onEnter: () => setHomeTint(proj),
-          onEnterBack: () => setHomeTint(proj),
-          onLeaveBack: () => { if (i === 0) setHomeTint(null); }
-        });
       }
     });
 
@@ -3509,7 +3473,6 @@ function cmsDownload() {
   const homeEl = document.getElementById('home');
   activeEls.forEach(function(el){ el.classList.remove('active'); });
   if (homeEl) homeEl.classList.add('active');
-  document.documentElement.style.backgroundColor = '';   // don't bake a runtime home wash into the export
   // tab state is runtime-only too: aria-current, the ink line and the live text are rebuilt at load
   markTabs(null);
   document.querySelectorAll('.tab-ink').forEach(i => i.removeAttribute('style'));   // markTabs below puts them back
@@ -3573,7 +3536,7 @@ function makeFlyNumber(numEl, color) {
   const el = document.createElement('div');
   el.className = 'transition-num';
   el.textContent = numEl.textContent;
-  if (color) el.style.color = color;   // light, to read over the dark project veil
+  if (color) el.style.color = color;   // ink, to read over the white wipe
   el.style.left = r.left + 'px';
   el.style.top  = r.top + 'px';
   el.style.fontSize = getComputedStyle(numEl).fontSize;   // start matched to the home number
@@ -4119,14 +4082,13 @@ function navigateTo(pageId, opts) {
   // clip-path wipe expanding from the click point (same inset/circle language as reveals),
   // swap at peak coverage, then fade the veil out to reveal the destination.
   const veil = getPageVeil();
-  // veil takes the project's dark tone so the wipe bridges into the project hero's dark
-  // gradient instead of flashing parchment-white; non-project nav stays parchment.
-  veil.style.backgroundColor = (opts && opts.veilColor) || PARCHMENT;
+  // the wipe is always white (coloured project veil removed 2026-11-09)
+  veil.style.backgroundColor = PARCHMENT;
   // (a Back/Forward press has no click point — wipe from the centre)
   const x = fromHistory ? window.innerWidth / 2 : _lastPointer.x;
   const y = fromHistory ? window.innerHeight / 2 : _lastPointer.y;
   const R = Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y));
-  const fly = (opts && opts.numEl) ? makeFlyNumber(opts.numEl, opts.veilColor ? '#F0EBE1' : null) : null;
+  const fly = (opts && opts.numEl) ? makeFlyNumber(opts.numEl, 'var(--fg)') : null;   // ink, to read over the white wipe
   gsap.killTweensOf(veil);
   veil.style.opacity = '1';
   gsap.fromTo(veil,
@@ -4184,7 +4146,6 @@ function swapPage(pageId) {
       initProjectIndex();                 // (re)build pin triggers against the now-visible home
     } else {
       killProjectIndex();                 // tear down index triggers while home is hidden
-      document.documentElement.style.backgroundColor = PARCHMENT;   // drop any home wash
       markTabs(pageId.indexOf('project-') === 0 ? (_navTab || firstTagTab(pageId)) : null);
       if (pageId.indexOf('project-') === 0) animateProjectEntry(pageId);
     }
