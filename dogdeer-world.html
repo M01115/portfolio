@@ -153,13 +153,91 @@
        double-tap doesn't zoom, and a long press doesn't start a text selection.
        touch-action keeps panning, so a swipe over the world still scrolls the
        page it's embedded in. */
+    /* Cyber season (?season=cyber): the world's small UI turns terminal green. */
+    .cyber #e-prompt, .cyber #deer-speech {
+      font-family: 'Courier New', ui-monospace, Menlo, monospace; font-weight: 400;
+      color: #39FF88; background: rgba(4,12,10,0.80);
+      border: 1px solid rgba(57,255,136,0.45);
+    }
+    .cyber #hint, .cyber #season-badge { color: rgba(33,230,255,0.55); }
+    .cyber #obj-label { color: rgba(220,245,255,0.62); }
+
     @media (pointer: coarse) {
       canvas { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
       body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
       #e-prompt { pointer-events: auto; -webkit-tap-highlight-color: transparent; }
       #e-prompt::before { content: ''; position: absolute; inset: -14px -12px; }
     }
+
+    /* ── Techno dog-deer: cyber first paint, boot loader, terminal ───────── */
+    .cyber body, .cyber #load-veil { background-color: #0B0820; }
+    #cyber-boot {
+      position: fixed; inset: 0; z-index: 52; display: none;
+      flex-direction: column; align-items: center; justify-content: center; gap: 22px;
+      pointer-events: none; transition: opacity .9s ease;
+      font-family: 'Courier New', ui-monospace, Menlo, monospace;
+    }
+    .cyber #cyber-boot { display: flex; }
+    #cyber-boot .cb-scan {
+      position: absolute; inset: 0; pointer-events: none;
+      background: repeating-linear-gradient(0deg, rgba(160,230,255,0.05) 0 1px, transparent 1px 3px);
+    }
+    #cyber-boot svg { width: min(150px, 30vw, 22vh); height: auto; overflow: visible; }
+    #cyber-boot path {
+      fill: none; stroke: #21E6FF; stroke-width: 16; stroke-linejoin: round;
+      stroke-dasharray: 1; stroke-dashoffset: 1;
+      animation: cbDraw 1.7s ease-out forwards;
+      filter: drop-shadow(0 0 5px rgba(33,230,255,0.85));
+    }
+    @keyframes cbDraw { to { stroke-dashoffset: 0; } }
+    #cyber-boot pre {
+      margin: 0; width: min(340px, 86vw); min-height: 10.5em;
+      color: #39FF88; font: 11px/1.75 'Courier New', ui-monospace, Menlo, monospace;
+      letter-spacing: .04em; white-space: pre-wrap; text-shadow: 0 0 6px rgba(57,255,136,0.55);
+    }
+
+    #term {
+      position: fixed; inset: 0; z-index: 40; display: none;
+      align-items: center; justify-content: center;
+      background: rgba(4,6,10,0.55); opacity: 0; transition: opacity .25s ease;
+      --cell: clamp(34px, min((100vw - 150px) / 5, (100vh - 190px) / 5), 54px);
+    }
+    #term.open { opacity: 1; }
+    #term .term-panel {
+      background: rgba(4,12,10,0.94); border: 1px solid rgba(57,255,136,0.5);
+      box-shadow: 0 0 24px rgba(57,255,136,0.18);
+      padding: 16px 18px 14px; border-radius: 3px;
+      font-family: 'Courier New', ui-monospace, Menlo, monospace; color: #39FF88;
+    }
+    #term .term-head { font-size: 13px; letter-spacing: .08em; margin-bottom: 14px; text-shadow: 0 0 6px rgba(57,255,136,0.5); }
+    #term .term-cursor { animation: termBlink 1s steps(1) infinite; }
+    @keyframes termBlink { 50% { opacity: 0; } }
+    #term .term-wrap { position: relative; display: flex; align-items: flex-start; gap: 8px; }
+    #term .term-side { position: relative; width: 50px; height: calc(var(--cell) * 5); font-size: 10px; letter-spacing: .08em; white-space: nowrap; }
+    #term .term-side span { position: absolute; left: 0; right: 0; height: var(--cell); display: flex; align-items: center; justify-content: center; }
+    #term .term-src span { color: #39FF88; }
+    #term .term-sink span { color: #21E6FF; }
+    #term .term-board { display: grid; grid-template-columns: repeat(5, var(--cell)); grid-auto-rows: var(--cell); gap: 2px; }
+    #term .term-board button {
+      width: var(--cell); height: var(--cell); padding: 0; margin: 0;
+      background: rgba(57,255,136,0.05); border: 1px solid rgba(57,255,136,0.18); border-radius: 2px;
+      cursor: pointer; color: rgba(57,255,136,0.32); -webkit-tap-highlight-color: transparent;
+    }
+    #term .term-board button:focus-visible { outline: 2px solid #21E6FF; outline-offset: -2px; }
+    #term .term-board button.lit { color: #39FF88; background: rgba(57,255,136,0.12); }
+    #term .term-board svg { display: block; width: 100%; height: 100%; transition: transform .16s ease-out; }
+    #term .term-board line, #term .term-board circle { stroke: currentColor; stroke-width: 16; stroke-linecap: round; fill: currentColor; }
+    #term .term-board button.lit svg { filter: drop-shadow(0 0 4px rgba(57,255,136,0.9)); }
+    #term.solved .term-board button.lit { color: #21E6FF; }
+    #term .term-foot { margin-top: 12px; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: rgba(57,255,136,0.55); }
+    #term.msg .term-wrap, #term.msg .term-foot { display: none; }
+    @media (prefers-reduced-motion: reduce) {
+      #cyber-boot path { animation: none; stroke-dashoffset: 0; }
+      #term .term-board svg { transition: none; }
+      #term .term-cursor { animation: none; }
+    }
   </style>
+  <script>/* cyber season: dark from the very first paint */if (/[?&]season=cyber(&|$)/.test(location.search)) document.documentElement.classList.add('cyber');</script>
 </head>
 <body>
 
@@ -177,6 +255,22 @@
 <div id="mode-badge"></div>
 <div id="season-badge"></div>
 <div id="load-veil"></div>
+<div id="cyber-boot" aria-hidden="true">
+  <div class="cb-scan"></div>
+  <svg viewBox="710 1139 1605 1755" xmlns="http://www.w3.org/2000/svg"><path pathLength="1" d="M2095.46,2276.75c-31.37,171.66-19.33,366.1,11.27,536.22,5.8,32.25,7.51,72.53-11.75,79.55-7.24,2.64-16.99-.48-22.9-7.91-34.17-42.98-64.36-197.85-81.91-268.99l-46.68-189.26c-5.81-23.55-13-44.98-27.5-67.48-12.45,25.96-14.4,52.24-17.15,79.76-7.14,71.42-6.68,141.31-1.27,213.3l12.16,161.77c2.3,30.64.2,64.67-18.15,65.54-25.01,1.18-45.26-66.77-56.51-105.83-40.61-141.09-69.62-283.36-93.17-430.2-154.97,27.13-299.92,11.67-449.01-35.3-21.47,160.83-29.84,320.05-27.29,481.87.56,35.35.19,83.84-18,92.3-42.39,19.72-61.22-130.01-67.23-186.11l-32.22-301.18-41.35,152.27c-18.44,67.91-96.68,344.18-151.73,312.95-21.38-12.12-7.07-75.04,4.08-113.2,30.83-105.53,55.09-209.51,72.78-318.43,28-172.42,41.66-342.32-5.71-513.37-48.29,47.71-93.76,91.81-143.92,134.15-27.69,23.38-56.32,43.1-90.44,54.48-19.97,5.35-39.62,6.07-56.48-6.13-43.64-31.59-23.44-97.3.02-148.45,51.42-112.1,114.85-214.62,184.79-321.01-46.2,7.54-88.54,13.68-129.93-2.47-10.88-4.24-20.22-10.98-22.94-20.25s-.19-23.31,8.6-30.82c46.58-39.78,102.67-64.07,164.95-75.73-14.68-57.09-14.53-114.75-7.04-173.67,6.73-52.91,19.61-103.43,47.96-147.91,16.91-26.78,44.96-48.23,62.61-34.23,30.57,24.24-26.64,135.44-41.99,206.34-6.15,28.4-8.05,64.78,1.77,67.27,13.44,3.41,27.13-99.23,69.77-93.46,11.4,1.54,20.13,10.48,22.32,23.25,2.21,12.9-.55,25.18-5.74,37.05l-27.76,63.43c-7.32,16.73-10.19,34.69-4.7,51.82,46.31,7.83,86.24,25.91,123.96,52.8,12.45-5.48,22.42-14.95,30.03-26.3l31.16-46.49c17.46-26.04,42.51-50.48,62.95-36.73,25.79,17.34,2.69,51.6-17.59,82.1-6.62,9.96-14.53,18.15-16.54,31.31,29.32-.81,68.54-43.62,88.82-70.38l53.81-71.01c19.5-25.73,51.87-56.32,73.07-46.12,18,8.66,15.74,46.98-.81,74.82-24.87,43.59-57.3,80.65-95.16,113.76-38.29,33.48-76.4,64.54-123.75,87.06,36.77,65.23,61.42,149.84,40.82,221.03-4.34,8.79-10.23,15.54-17.97,18.28s-17.24,1.17-25.38-4.25c-38.39-25.54-58.94-65.42-72.41-109.8l-70.94,58.91c30.58,34.33,62.13,61.11,99.52,85.38,91.17,61.2,196.32,93,307,90.4,94.32-2.21,185.13-31.6,273.47-33.49,125.68-2.69,203.58,33.26,293.58,114.91,31.59,28.66,63.23,54.24,100.1,75.25,63.39,36.13,105.07,21.57,115.57,38.16,11.71,18.5-14.43,43.61-37.21,61.78-51.16,40.78-119.8,48.17-178.74,16.68Z"/></svg>
+  <pre id="cyber-boot-log"></pre>
+</div>
+<div id="term" role="dialog" aria-modal="true" aria-label="Terminal: reroute the signal">
+  <div class="term-panel">
+    <div class="term-head"><span class="term-title">&gt; REROUTE THE SIGNAL</span><span class="term-cursor">_</span></div>
+    <div class="term-wrap">
+      <div class="term-side term-src"></div>
+      <div class="term-board" role="grid" aria-label="Pipe tiles"></div>
+      <div class="term-side term-sink"></div>
+    </div>
+    <div class="term-foot"></div>
+  </div>
+</div>
 
 <script type="importmap">
 { "imports": {
@@ -290,13 +384,41 @@ const SEASONS = {
     broadleaf: [0x5C4A38],
     blossom: false, snow: true, bare: true, ice: true,
   },
+  // Cyber (techno dog-deer easter egg, 2026-11-17 — techno-dogdeer-design.md).
+  // The same Walden pond at night gone neon. NEVER picked at random: only
+  // ?season=cyber (and, later, the hidden terminal) loads it. Everything the
+  // table can't express (grids, wireframe trees, glowing objects, hologram
+  // deer, rain) is done by the CYBER block after the deer is built.
+  cyber: {
+    name: 'Cyber',
+    sky: 0x0B0820,
+    sun: 0x8C7CFF, sunI: 0.38, hemiSky: 0x3A2C74, hemiGround: 0x0A0614, hemiI: 0.55,
+    water: { shallow: 0x18235A, deep: 0x05060F, shore: 0x2C1C58 },
+    waterMotion: { amp: 0.040, speed: 0.85, scale: 0.50, shimmer: 0.050 },
+    wind: { travelBearing: 135, speed: 0.45, gust: 0.35 },
+    veil: 0x2A0E44,   // viewport edge-fog tint: violet night haze
+    floor: [0x120E24, 0x171232, 0x0E0B1E, 0x1B1538],
+    // Tree colours here become the neon WIREFRAME colours (the fills go dark).
+    pine: [0x21E6FF, 0x1AA0E0],
+    broadleaf: [0xFF2BD6, 0xA040FF, 0xC6FF3A],
+    foam: 0x21E6FF,   // shoreline + wake foam = a cyan neon edge
+    blossom: false, snow: false, bare: false, ice: false, cyber: true,
+  },
 };
+// The cyber look's three neons, in one place so the palette is a one-line swap.
+const NEON = { magenta: 0xFF2BD6, cyan: 0x21E6FF, lime: 0xC6FF3A };
+// The random pick only ever chooses these four; 'cyber' is not in it.
 const SEASON_KEYS = ['spring', 'summer', 'autumn', 'winter'];
-// Random per load, but overridable via ?season=spring|summer|autumn|winter for
-// deterministic verification of season-specific behaviour.
+// Random per load, but overridable via ?season=spring|summer|autumn|winter|cyber
+// for deterministic verification of season-specific behaviour.
 const _seasonParam = new URLSearchParams(location.search).get('season');
-const SEASON = SEASONS[SEASON_KEYS.includes(_seasonParam) ? _seasonParam
+const SEASON = SEASONS[(SEASON_KEYS.includes(_seasonParam) || _seasonParam === 'cyber') ? _seasonParam
               : SEASON_KEYS[Math.floor(Math.random() * SEASON_KEYS.length)]];
+const CYBER = !!SEASON.cyber;
+if (CYBER) {
+  document.documentElement.classList.add('cyber');
+  document.body.style.background = '#' + SEASON.sky.toString(16).padStart(6, '0');
+}
 document.getElementById('season-badge').textContent = SEASON.name;
 document.title = 'Dog-Deer World — ' + SEASON.name;
 {
@@ -338,7 +460,53 @@ document.title = 'Dog-Deer World — ' + SEASON.name;
   // tint framing the frame edges, not moving elements.
   seasonFilter.style.background = vignette;
 }
+// ── Cyber boot loader ──
+// In the cyber season the load veil carries a boot screen: the dog-deer
+// outline draws itself in cyan while boot lines type out. The veil only lifts
+// once BOTH the world is ready (revealLoadVeil called) AND the boot text has
+// finished, so it always reads, however fast the world builds. Reduced motion:
+// the text appears at once and nothing draws or types.
+const CYBER_BOOT_LINES = [
+  'DOGDEER OS  //  build 2077',
+  '> signal rerouted ............ OK',
+  '> walden.pond --grid ......... ONLINE',
+  '> forest.render --wire ....... OK',
+  '> deer.hologram .............. PROJECTING',
+  '> welcome back to the pond.',
+];
+let _cyberBootDone = !CYBER, _cyberRevealWanted = false;
+if (CYBER) {
+  const log = document.getElementById('cyber-boot-log');
+  const calm = !!window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const finish = () => { _cyberBootDone = true; if (_cyberRevealWanted) revealLoadVeil(); };
+  if (calm) { log.textContent = CYBER_BOOT_LINES.join('\n'); setTimeout(finish, 1200); }
+  else {
+    let i = 0;
+    const tick = () => {
+      log.textContent += (i ? '\n' : '') + CYBER_BOOT_LINES[i++];
+      if (i < CYBER_BOOT_LINES.length) setTimeout(tick, 260); else setTimeout(finish, 650);
+    };
+    setTimeout(tick, 400);
+  }
+  // Arrived through the terminal (not Morris's direct ?season=cyber link):
+  // drop the params from the address so a plain reload is natural again.
+  const q = new URLSearchParams(location.search);
+  if (q.get('via') === 'terminal') {
+    q.delete('via'); q.delete('season');
+    const qs = q.toString();
+    try { history.replaceState(history.state, '', location.pathname + (qs ? '?' + qs : '') + location.hash); } catch (e) {}
+  }
+}
 function revealLoadVeil() {
+  if (!_cyberBootDone) { _cyberRevealWanted = true; return; }
+  if (CYBER) {
+    const boot = document.getElementById('cyber-boot');
+    boot.style.opacity = '0';
+    setTimeout(() => { boot.style.display = 'none'; }, 950);
+    // The boot held the veil, so restart the sky descent from now; it would
+    // otherwise have played out unseen behind the boot screen.
+    if (_cyberRevealWanted) { try { _introStart = performance.now(); } catch (e) {} }
+  }
   document.getElementById('load-veil').style.opacity = '0';
   document.getElementById('edge-fog').style.opacity = '1';
   document.getElementById('season-filter').style.opacity = '1';
@@ -669,7 +837,12 @@ const OBJ_DEFS = [
     label: 'Cartographer',
     text: 'A market corner that grows itself from 1150 to 1650, and can say why every building is there.' },
 ];
-const OBJS = OBJ_DEFS.map(d => ({ pos: d.pos, onWater: d.onWater }));
+// The techno dog-deer terminal (2026-11-18): a small console in the reeds on
+// the east shore. Listed in OBJS (last, after every project) so it gets the
+// same knoll, clearing and wander-avoidance as the project objects; it is NOT
+// in OBJ_DEFS, since it isn't a project. Move it by changing this one value.
+const TERMINAL_POS = [28.9, 3.2];
+const OBJS = [...OBJ_DEFS.map(d => ({ pos: d.pos, onWater: d.onWater })), { pos: TERMINAL_POS, onWater: false }];
 const OBJ_SCALE = 2.2; // objects read bigger than the surrounding trees
 
 function smoothstep(edge0, edge1, x) {
@@ -803,7 +976,7 @@ function floorShadeColor(x, z) {
            + perlin2(x * 0.19 - 6.1, z * 0.19 + 1.8) * 0.3 + 1) / 2;
   return smoothPaletteColor(SEASON.floor, n);
 }
-const SAND = new THREE.Color(SEASON.snow ? 0xE6EAEC : 0xD8C89A);
+const SAND = new THREE.Color(SEASON.snow ? 0xE6EAEC : CYBER ? 0x2A2140 : 0xD8C89A);
 
 function terrainColorAt(x, z, h, li) {   // li: optional precomputed lakeFieldAt(x, z), see heightAt
   const col = floorShadeColor(x, z);
@@ -967,7 +1140,7 @@ function buildWaterMesh() {
   const shallow = new THREE.Color(SEASON.water.shallow);
   const deep    = new THREE.Color(SEASON.water.deep);
   const shore   = new THREE.Color(SEASON.water.shore);
-  const FOAM    = new THREE.Color(0xF4F8F6);
+  const FOAM    = new THREE.Color(SEASON.foam ?? 0xF4F8F6);
   const ice     = new THREE.Color(0xDCE6EA);
   const iceDeep = new THREE.Color(0xB6C6CE);
   WATER_SHORE_COLOR = shore;
@@ -1360,7 +1533,42 @@ function buildInstancedSpecies(placements, variantFn, flex) {
     TREE_INSTANCED_MESHES.push(im);
   }
 }
+// Cyber only (Morris, 2026-11-18): as neon wireframes, trees that overlap on
+// screen merge into one tangle of lines. So drop any tree whose on-screen
+// shape would overlap a tree already kept, bigger trees first. The shape is
+// the canopy's footprint stretched back by the tree's height as the camera
+// sees it (camera sits 27 up / 20.5 back, so a point at height y lands
+// 0.76·y further from the camera on the ground). Radii/heights are each
+// species' canonical canopy size (see *VariantGeometry) × the tree's scale.
+function thinOverlappingTrees() {
+  const LEAN = 20.5 / 27, GAP = 0.06, CELL = 3;
+  const species = [[pinePlacements, 0.34, 1.06], [oakPlacements, 0.62, 1.40], [hickoryPlacements, 0.36, 1.12]];
+  const all = [];
+  for (const [list, r, h] of species) for (const p of list) {
+    all.push({ p, list, x0: p.x - r * p.th, x1: p.x + r * p.th, z0: p.z - r * p.th - h * p.th * LEAN, z1: p.z + r * p.th });
+  }
+  all.sort((a, b) => (b.x1 - b.x0) - (a.x1 - a.x0));
+  const grid = new Map(), kept = [];
+  const key = (i, j) => i * 100003 + j;
+  for (const t of all) {
+    const ci = Math.floor((t.x0 + t.x1) / 2 / CELL), cj = Math.floor((t.z0 + t.z1) / 2 / CELL);
+    let hit = false;
+    for (let i = ci - 1; i <= ci + 1 && !hit; i++) for (let j = cj - 1; j <= cj + 1 && !hit; j++) {
+      for (const k of grid.get(key(i, j)) || []) {
+        if (t.x0 < k.x1 + GAP && k.x0 < t.x1 + GAP && t.z0 < k.z1 + GAP && k.z0 < t.z1 + GAP) { hit = true; break; }
+      }
+    }
+    if (hit) continue;
+    const kk = key(ci, cj);
+    if (!grid.has(kk)) grid.set(kk, []);
+    grid.get(kk).push(t);
+    kept.push(t);
+  }
+  for (const [list] of species) list.length = 0;
+  for (const t of kept) t.list.push(t.p);
+}
 function finalizeInstancedTrees() {
+  if (CYBER) thinOverlappingTrees();
   buildInstancedSpecies(pinePlacements, pineVariantGeometry, 0.6);    // pines are stiffer/lower-profile — less sway
   buildInstancedSpecies(oakPlacements, oakVariantGeometry, 1.0);      // wide broadleaf canopy sways more than a pine
   buildInstancedSpecies(hickoryPlacements, hickoryVariantGeometry, 0.9);
@@ -1759,6 +1967,53 @@ const projectObjects = OBJ_DEFS.map((d, i) => {
 });
 const crownObj = projectObjects.find(o => o.onWater);
 
+// The terminal: a squat console with a glowing green screen and a blinking
+// antenna, half-hidden in a reed clump, cable trailing toward the water. Its
+// screen + antenna tip glow in every season (userData.keepMat stops the cyber
+// pass from recolouring them). It joins projectObjects so it reuses the
+// [ e ] prompt, label, tap-to-interact and proximity code; `terminal: true`
+// makes triggerInteraction open the minigame instead of a project reaction.
+const TERMINAL_SCREEN_MAT = new THREE.MeshLambertMaterial({ color: 0x08200F, emissive: 0x39FF88, emissiveIntensity: 1.0 });
+const TERMINAL_TIP_MAT = new THREE.MeshLambertMaterial({ color: 0x300818, emissive: 0xFF2BD6, emissiveIntensity: 1.0 });
+let terminalTip = null;
+function makeTerminal(g) {
+  mesh(new THREE.BoxGeometry(0.46, 0.06, 0.34), C.soil, g).position.set(0, 0.03, 0);
+  const body = mesh(new THREE.BoxGeometry(0.34, 0.30, 0.24), 0x2C3036, g);
+  body.position.set(0, 0.21, 0);
+  const head = mesh(new THREE.BoxGeometry(0.34, 0.18, 0.06), 0x24282D, g);
+  head.position.set(0, 0.40, 0.04); head.rotation.x = -0.45;
+  const screen = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.12, 0.012), TERMINAL_SCREEN_MAT);
+  screen.position.set(0, 0.405, 0.075); screen.rotation.x = -0.45; screen.userData.keepMat = true;
+  g.add(screen);
+  mesh(new THREE.BoxGeometry(0.28, 0.02, 0.08), 0x1A1D21, g).position.set(0, 0.37, 0.14);   // keyboard ledge
+  const ant = mesh(new THREE.CylinderGeometry(0.008, 0.010, 0.30, 4), 0x1A1D21, g);
+  ant.position.set(0.12, 0.62, -0.06);
+  terminalTip = new THREE.Mesh(new THREE.SphereGeometry(0.022, 6, 5), TERMINAL_TIP_MAT);
+  terminalTip.position.set(0.12, 0.78, -0.06); terminalTip.userData.keepMat = true;
+  g.add(terminalTip);
+  const cable = mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.6, 4), 0x111316, g);
+  cable.rotation.z = Math.PI / 2; cable.position.set(-0.45, 0.02, 0.02);
+  const reed = SEASON.snow ? 0xB6A98E : (SEASON.name === 'Autumn' ? 0x9A8A4E : 0x5A7A4E);
+  for (const [rx, rz, rh] of [[-0.24, 0.16, 0.42], [-0.30, -0.08, 0.52], [0.24, 0.18, 0.36], [0.27, -0.14, 0.46], [-0.08, -0.22, 0.40]]) {
+    const r = mesh(new THREE.BoxGeometry(0.025, rh, 0.025), reed, g);
+    r.position.set(rx, rh / 2, rz); r.rotation.z = (Math.random() - 0.5) * 0.3; r.castShadow = false;
+  }
+}
+const terminalObj = (() => {
+  const g = new THREE.Group();
+  const gy = heightAt(TERMINAL_POS[0], TERMINAL_POS[1]);
+  g.position.set(TERMINAL_POS[0], gy, TERMINAL_POS[1]);
+  g.rotation.y = -0.35;   // screen turned toward the camera and the lake
+  g.scale.setScalar(1.7);
+  makeTerminal(g);
+  scene.add(g);
+  COLLIDERS.push({ x: TERMINAL_POS[0], z: TERMINAL_POS[1], r: 0.6 });
+  const o = { grp: g, index: projectObjects.length, onWater: false, baseY: gy,
+              label: CYBER ? 'Terminal · back to Walden' : 'Terminal', text: '', reaction: 'none', terminal: true };
+  projectObjects.push(o);
+  return o;
+})();
+
 // ── Dog-Deer ──────────────────────────────────────────────────────────────────
 const BASE_Y = 0.18;
 // Fixed spawn point — the deer always starts here (south shore, facing the lake)
@@ -1844,6 +2099,188 @@ tailGrp.rotation.x = -0.50;            // static droop, angled down/back at rest
 deerRoot.add(tailGrp);
 const tail = dmesh(new THREE.BoxGeometry(0.13, 0.10, 0.20), C.amber, tailGrp);
 tail.position.set(0, 0, 0.09);         // box extends outward from the pivot, overlapping the body slightly
+
+// ── CYBER SEASON LOOK (techno dog-deer egg, 2026-11-17) ──────────────────────
+// Runs once, only when SEASON is cyber; the four real seasons never reach it.
+// The season table already made the sky, fog, lights, floor and water dark
+// and the tree vertex colours neon. This pass adds what a colour table can't:
+// neon grids on the ground and water, trees as neon wireframes over dark
+// fills, project objects glowing in their own colours, and a wireframe
+// hologram deer. Rain + hologram flicker run per frame in updateCyber().
+// Glow is emissive materials + additive sprites only — no post-processing.
+const CYBER_CALM = !!window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+let cyberRain = null, cyberRainData = null, CYBER_HOLO_EDGE = null, CYBER_HOLO_EYES = null;
+if (CYBER) {
+  // A repeating 1-cell grid texture (white lines on black), used as an
+  // emissiveMap so only the lines glow, in whatever emissive colour is set.
+  const gridTexture = (repeat) => {
+    const cv = document.createElement('canvas'); cv.width = cv.height = 128;
+    const g2 = cv.getContext('2d');
+    g2.fillStyle = '#000'; g2.fillRect(0, 0, 128, 128);
+    g2.strokeStyle = '#fff'; g2.lineWidth = 5; g2.strokeRect(0, 0, 128, 128);
+    const tex = new THREE.CanvasTexture(cv);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(repeat, repeat);
+    tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  };
+
+  // Ground: faint magenta grid, one cell = 3 world units (kept dimmer than
+  // the water's so the pond stays the brightest surface).
+  ground.material.emissive = new THREE.Color(NEON.magenta);
+  ground.material.emissiveMap = gridTexture((GROUND_HALF * 2) / 3.0);
+  ground.material.emissiveIntensity = 0.13;
+  ground.material.needsUpdate = true;
+
+  // Water: cyan grid in world units (the rebuilt water mesh has no UVs, so
+  // they're made here from each vertex's x/z — the surface only moves in y).
+  if (waterMesh) {
+    const wp = waterGeo.attributes.position, CELL = 1.25;
+    const uv = new Float32Array(wp.count * 2);
+    for (let i = 0; i < wp.count; i++) { uv[i * 2] = wp.getX(i) / CELL; uv[i * 2 + 1] = wp.getZ(i) / CELL; }
+    waterGeo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    waterMesh.material.emissive = new THREE.Color(NEON.cyan);
+    waterMesh.material.emissiveMap = gridTexture(1);
+    waterMesh.material.emissiveIntensity = 0.32;
+    waterMesh.material.needsUpdate = true;
+  }
+
+  // Trees: dark fill + a neon wireframe twin that SHARES the fill's instance
+  // matrices and colours, so wind sway and the LITE draw-count trim drive both.
+  const TREE_FILL = new THREE.MeshLambertMaterial({ color: 0x0C0A1A, flatShading: true,
+    polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
+  const TREE_LINES = new THREE.MeshBasicMaterial({ vertexColors: true, wireframe: true,
+    transparent: true, opacity: 0.62, depthWrite: false, toneMapped: false });
+  for (const im of TREE_INSTANCED_MESHES.slice()) {
+    im.material = TREE_FILL;
+    const ov = new THREE.InstancedMesh(im.geometry, TREE_LINES, im.count);
+    ov.instanceMatrix = im.instanceMatrix;
+    ov.instanceColor = im.instanceColor;
+    ov.frustumCulled = im.frustumCulled;
+    ov.castShadow = ov.receiveShadow = false;
+    ov.onBeforeRender = () => { ov.count = im.count; };
+    scene.add(ov);
+  }
+
+  // Things that get their own treatment below are skipped by the generic pass.
+  const special = new Set([ground, waterMesh, ...TREE_INSTANCED_MESHES]);
+  deerRoot.traverse(o => special.add(o));
+  projectObjects.forEach(p => p.grp.traverse(o => special.add(o)));
+
+  // Everything else (bushes, reeds, rocks, skirt): darken to night tones.
+  const darkCache = new Map();
+  scene.traverse(o => {
+    if (!o.isMesh || special.has(o) || !o.material || !o.material.isMeshLambertMaterial) return;
+    if (o.material.vertexColors) {
+      const key = 'vc_' + o.material.uuid;
+      if (!darkCache.has(key)) { const m = o.material.clone(); m.color.setHex(0x3C3558); darkCache.set(key, m); }
+      o.material = darkCache.get(key);
+    } else {
+      const hex = o.material.color.getHex();
+      if (!darkCache.has(hex)) {
+        const c = new THREE.Color(hex).multiplyScalar(0.22).lerp(new THREE.Color(0x1A1238), 0.35);
+        darkCache.set(hex, new THREE.MeshLambertMaterial({ color: c, flatShading: o.material.flatShading }));
+      }
+      o.material = darkCache.get(hex);
+    }
+  });
+
+  // Project objects: each keeps its shape and glows in its own colours (the
+  // soil pad stays dark), plus a soft additive halo in its brightest colour —
+  // the pond's neon signs. Halos are skipped on LITE.
+  const glowCv = document.createElement('canvas'); glowCv.width = glowCv.height = 64;
+  { const g2 = glowCv.getContext('2d'); const rg = g2.createRadialGradient(32, 32, 0, 32, 32, 32);
+    rg.addColorStop(0, 'rgba(255,255,255,0.9)'); rg.addColorStop(0.35, 'rgba(255,255,255,0.28)'); rg.addColorStop(1, 'rgba(255,255,255,0)');
+    g2.fillStyle = rg; g2.fillRect(0, 0, 64, 64); }
+  const glowTex = new THREE.CanvasTexture(glowCv);
+  const glowCache = new Map();
+  const _hsl = {};
+  for (const p of projectObjects) {
+    let haloHex = NEON.cyan, haloScore = -1;
+    p.grp.traverse(m => {
+      if (!m.isMesh || !m.material || !m.material.color || m.userData.keepMat) return;
+      const hex = m.material.color.getHex();
+      if (hex === C.soil) { m.material = mat(0x1A1430); return; }
+      m.material.color.getHSL(_hsl);
+      const score = _hsl.s * 0.7 + _hsl.l * 0.3;
+      if (score > haloScore) { haloScore = score; haloHex = hex; }
+      if (!glowCache.has(hex)) {
+        glowCache.set(hex, new THREE.MeshLambertMaterial({ color: new THREE.Color(hex).multiplyScalar(0.3),
+          emissive: new THREE.Color(hex), emissiveIntensity: 0.85, flatShading: true }));
+      }
+      m.material = glowCache.get(hex);
+    });
+    if (!LITE) {
+      const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: haloHex,
+        blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: 0.55, toneMapped: false }));
+      halo.position.set(0, 0.45, 0);
+      halo.scale.set(2.6, 2.6, 1);
+      p.grp.add(halo);
+    }
+  }
+
+  // Deer: wireframe hologram. Same geometry and rig (so every gait, idle and
+  // reaction still works), drawn as cyan edges over a barely-there fill; eyes
+  // and nose are magenta. No shadow — it's light, not a body.
+  const HOLO_FILL = new THREE.MeshBasicMaterial({ color: NEON.cyan, transparent: true, opacity: 0.10,
+    depthWrite: false, toneMapped: false });
+  CYBER_HOLO_EDGE = new THREE.LineBasicMaterial({ color: NEON.cyan, transparent: true, opacity: 0.95, toneMapped: false });
+  CYBER_HOLO_EYES = new THREE.LineBasicMaterial({ color: NEON.magenta, transparent: true, opacity: 0.95, toneMapped: false });
+  const deerMeshes = [];
+  deerRoot.traverse(o => { if (o.isMesh) deerMeshes.push(o); });
+  for (const m of deerMeshes) {
+    const isInk = m.material.color.getHex() === C.ink;
+    m.material = HOLO_FILL;
+    m.castShadow = false;
+    m.add(new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry, 25), isInk ? CYBER_HOLO_EYES : CYBER_HOLO_EDGE));
+  }
+
+  // Rain: thin slanted streaks in a box that follows the camera's look target.
+  // Desktop only, and not under reduced motion.
+  if (!LITE && !CYBER_CALM) {
+    const N = 900, HALF = 24, TOP = 18;
+    const pos = new Float32Array(N * 6);
+    cyberRainData = { N, HALF, TOP, x: new Float32Array(N), y: new Float32Array(N), z: new Float32Array(N), v: new Float32Array(N) };
+    for (let i = 0; i < N; i++) {
+      cyberRainData.x[i] = (Math.random() * 2 - 1) * HALF;
+      cyberRainData.z[i] = (Math.random() * 2 - 1) * HALF;
+      cyberRainData.y[i] = Math.random() * TOP;
+      cyberRainData.v[i] = 16 + Math.random() * 8;
+    }
+    const rg = new THREE.BufferGeometry();
+    rg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    cyberRain = new THREE.LineSegments(rg, new THREE.LineBasicMaterial({ color: 0x9FD8FF, transparent: true,
+      opacity: 0.32, depthWrite: false, toneMapped: false }));
+    cyberRain.frustumCulled = false;
+    scene.add(cyberRain);
+  }
+}
+// Per-frame cyber work: rain fall + hologram flicker. Called from animate()
+// (after every top-level const exists, so camLookTarget is safe to read).
+let _cyberGlitch = 0;
+function updateCyber(dt, now) {
+  if (cyberRain) {
+    const r = cyberRainData, a = cyberRain.geometry.attributes.position.array;
+    const cx = camLookTarget.x, cz = camLookTarget.z;
+    for (let i = 0; i < r.N; i++) {
+      r.y[i] -= r.v[i] * dt;
+      if (r.y[i] < 0) { r.y[i] += r.TOP; r.x[i] = (Math.random() * 2 - 1) * r.HALF; r.z[i] = (Math.random() * 2 - 1) * r.HALF; }
+      const x = cx + r.x[i], z = cz + r.z[i], y = r.y[i], o = i * 6;
+      a[o] = x; a[o + 1] = y; a[o + 2] = z;
+      a[o + 3] = x + 0.10; a[o + 4] = y + 0.55; a[o + 5] = z + 0.05;
+    }
+    cyberRain.geometry.attributes.position.needsUpdate = true;
+  }
+  if (CYBER_HOLO_EDGE && !CYBER_CALM) {
+    // A soft shimmer, plus a rare brief dropout so it reads as a projection.
+    if (_cyberGlitch > 0) _cyberGlitch -= dt;
+    else if (Math.random() < dt * 0.25) _cyberGlitch = 0.06 + Math.random() * 0.08;
+    const k = _cyberGlitch > 0 ? 0.3 : 0.82 + 0.13 * Math.sin(now * 0.011) * Math.sin(now * 0.0037);
+    CYBER_HOLO_EDGE.opacity = k;
+    CYBER_HOLO_EYES.opacity = Math.min(1, k + 0.05);
+  }
+}
 
 // ── Physics-style water wake ─────────────────────────────────────────────────
 // The deer's motion drops expanding wavefronts on the pond. Each frame the water
@@ -2288,6 +2725,7 @@ function hideEPrompt() {
 const INTERACT_RADIUS = 2.4;
 function triggerInteraction(obj) {
   if (interacting) return;
+  if (obj.terminal) { openTerminal(); return; }
   interacting = true; deerFrozen = true; hideEPrompt();
   let frame = 0;
   const lakeInf = lakeFieldAt(deerRoot.position.x, deerRoot.position.z);
@@ -2336,6 +2774,183 @@ function triggerInteraction(obj) {
 window.addEventListener('keydown', e => {
   if ((e.key === 'e' || e.key === 'E') && nearbyObj && !interacting && !sandboxMode) triggerInteraction(nearbyObj);
 });
+
+// ── Terminal minigame: reroute the signal (techno dog-deer, 2026-11-18) ──
+// A 5×5 board of pipe tiles. Click / tap a tile to turn it clockwise; connect
+// PWR (left edge) to POND (right edge). Boards are generated as a random
+// self-avoiding path from source to sink (so always solvable) plus decoy
+// pieces, then every tile is spun to a random turn. No fail state; Esc or the
+// exit line closes it. Solving it reloads the world as the cyber season.
+// In the cyber season the same terminal is the way back (no puzzle).
+// Tile openings are a 4-bit mask: N=1, E=2, S=4, W=8. Turning clockwise
+// shifts each opening one step round (N→E→S→W→N).
+const TERM_N = 5;
+const termEl = document.getElementById('term');
+const termBoard = termEl.querySelector('.term-board');
+const termTitle = termEl.querySelector('.term-title');
+const termFoot = termEl.querySelector('.term-foot');
+const termSrc = termEl.querySelector('.term-src'), termSink = termEl.querySelector('.term-sink');
+termFoot.textContent = (COARSE_POINTER ? 'tap' : 'click') + ' a tile to turn it  ·  ' + (COARSE_POINTER ? 'tap outside' : 'esc') + ' to exit';
+const TERM_DIRS = [[-1, 0, 1, 4], [0, 1, 2, 8], [1, 0, 4, 1], [0, -1, 8, 2]];   // [dr, dc, myBit, theirBit]
+const rotMask = (m, k) => { for (let i = 0; i < (k & 3); i++) m = ((m << 1) | (m >> 3)) & 15; return m; };
+let termState = null, termOpen = false, termSolved = false;
+
+function termMakeBoard() {
+  for (;;) {
+    const r0 = (Math.random() * TERM_N) | 0;
+    const path = [[r0, 0]], seen = new Set([r0 * TERM_N]);
+    let r = r0, c = 0, ok = false;
+    while (path.length < 40) {
+      if (c === TERM_N - 1 && path.length >= 7 && Math.random() < 0.55) { ok = true; break; }
+      const moves = [[0, 1], [0, 1], [-1, 0], [1, 0], [0, -1]].filter(([dr, dc]) => {
+        const nr = r + dr, nc = c + dc;
+        return nr >= 0 && nr < TERM_N && nc >= 0 && nc < TERM_N && !seen.has(nr * TERM_N + nc);
+      });
+      if (!moves.length) { if (c === TERM_N - 1) ok = true; break; }
+      const [dr, dc] = moves[(Math.random() * moves.length) | 0];
+      r += dr; c += dc; seen.add(r * TERM_N + c); path.push([r, c]);
+    }
+    if (!ok || path.length < 7) continue;
+    const base = new Array(TERM_N * TERM_N).fill(0);
+    const bitTo = (a, b) => b[0] < a[0] ? 1 : b[1] > a[1] ? 2 : b[0] > a[0] ? 4 : 8;
+    path.forEach((p, i) => {
+      let m = 0;
+      m |= i === 0 ? 8 : bitTo(p, path[i - 1]);
+      m |= i === path.length - 1 ? 2 : bitTo(p, path[i + 1]);
+      base[p[0] * TERM_N + p[1]] = m;
+    });
+    const DECOYS = [5, 10, 3, 6, 12, 9, 3, 6];
+    for (let i = 0; i < base.length; i++) if (!base[i]) base[i] = DECOYS[(Math.random() * DECOYS.length) | 0];
+    const turns = base.map(() => (Math.random() * 4) | 0);
+    const st = { base, turns, srcRow: r0, sinkRow: path[path.length - 1][0] };
+    if (!termConnected(st).solved) return st;
+  }
+}
+function termConnected(st) {
+  const lit = new Set(), mask = i => rotMask(st.base[i], st.turns[i]);
+  const start = st.srcRow * TERM_N;
+  if (mask(start) & 8) {
+    const q = [start]; lit.add(start);
+    while (q.length) {
+      const i = q.shift(), r = (i / TERM_N) | 0, c = i % TERM_N, m = mask(i);
+      for (const [dr, dc, mine, theirs] of TERM_DIRS) {
+        if (!(m & mine)) continue;
+        const nr = r + dr, nc = c + dc;
+        if (nr < 0 || nr >= TERM_N || nc < 0 || nc >= TERM_N) continue;
+        const j = nr * TERM_N + nc;
+        if (!lit.has(j) && (mask(j) & theirs)) { lit.add(j); q.push(j); }
+      }
+    }
+  }
+  const sink = st.sinkRow * TERM_N + TERM_N - 1;
+  return { lit, solved: lit.has(sink) && !!(mask(sink) & 2) };
+}
+function termTileSVG(m) {
+  const ends = [[50, 0], [100, 50], [50, 100], [0, 50]];
+  let s = '<svg viewBox="0 0 100 100" aria-hidden="true">';
+  ends.forEach(([x, y], k) => { if (m & (1 << k)) s += `<line x1="50" y1="50" x2="${x}" y2="${y}"/>`; });
+  return s + '<circle cx="50" cy="50" r="8"/></svg>';
+}
+function termRender() {
+  const { lit, solved } = termConnected(termState);
+  termBoard.querySelectorAll('button').forEach((b, i) => {
+    b.classList.toggle('lit', lit.has(i));
+    b.firstChild.style.transform = `rotate(${termState.turns[i] * 90}deg)`;
+  });
+  return solved;
+}
+function termBuild() {
+  termState = termMakeBoard();
+  termBoard.innerHTML = '';
+  termState.base.forEach((m, i) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.setAttribute('aria-label', `Tile row ${((i / TERM_N) | 0) + 1}, column ${(i % TERM_N) + 1}`);
+    b.innerHTML = termTileSVG(m);
+    b.addEventListener('click', e => { e.stopPropagation(); termTurn(i); });
+    termBoard.appendChild(b);
+  });
+  termSrc.innerHTML = `<span style="top:calc(var(--cell) * ${termState.srcRow} + ${termState.srcRow * 2}px)">PWR &gt;</span>`;
+  termSink.innerHTML = `<span style="top:calc(var(--cell) * ${termState.sinkRow} + ${termState.sinkRow * 2}px)">&gt; POND</span>`;
+  termRender();
+}
+function termTurn(i) {
+  if (!termOpen || termSolved) return;
+  termState.turns[i]++;   // cumulative, so the CSS turn always goes clockwise
+  if (termRender()) {
+    termSolved = true;
+    termEl.classList.add('solved');
+    termTitle.textContent = '> SIGNAL ROUTED. REBOOTING POND';
+    setTimeout(() => goSeason(true), 1100);
+  }
+}
+function openTerminal() {
+  if (termOpen) return;
+  termOpen = true; interacting = true; deerFrozen = true; hideEPrompt();
+  termSolved = false;
+  termEl.classList.remove('solved', 'msg');
+  termEl.style.display = 'flex';
+  requestAnimationFrame(() => termEl.classList.add('open'));
+  if (CYBER) {
+    // The way back: no puzzle, just a disconnect line and the switch.
+    termEl.classList.add('msg');
+    termTitle.textContent = '> DISCONNECTING. BACK TO WALDEN';
+    setTimeout(() => goSeason(false), 1000);
+    return;
+  }
+  termTitle.textContent = '> REROUTE THE SIGNAL';
+  termBuild();
+  const first = termBoard.querySelector('button');
+  if (first && !COARSE_POINTER) first.focus({ preventScroll: true });
+}
+function closeTerminal() {
+  if (!termOpen || termSolved || CYBER) return;
+  termOpen = false;
+  termEl.classList.remove('open');
+  setTimeout(() => { if (!termOpen) termEl.style.display = 'none'; }, 260);
+  interacting = false; deerFrozen = false;
+  try { renderer.domElement.focus({ preventScroll: true }); } catch (e) {}
+}
+// Tap / click on the dim backdrop (outside the panel) closes it.
+termEl.addEventListener('click', e => { if (e.target === termEl) closeTerminal(); });
+termEl.addEventListener('keydown', e => {
+  if (!termOpen) return;
+  if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeTerminal(); return; }
+  const btns = [...termBoard.querySelectorAll('button')];
+  const i = btns.indexOf(document.activeElement);
+  if (i < 0) return;
+  const mv = { ArrowUp: -TERM_N, ArrowDown: TERM_N, ArrowLeft: -1, ArrowRight: 1 }[e.key];
+  if (mv === undefined) return;
+  e.preventDefault();
+  const j = i + mv;
+  if (j >= 0 && j < btns.length && !(Math.abs(mv) === 1 && ((j / TERM_N) | 0) !== ((i / TERM_N) | 0))) btns[j].focus({ preventScroll: true });
+});
+window.addEventListener('keydown', e => { if (e.key === 'Escape' && termOpen) closeTerminal(); });
+
+// The switch: cover the world with the dark veil, then reload this same page
+// (same embed / lite / capture flags) with or without the cyber season.
+// location.replace, so the browser's Back button never steps between seasons
+// (in the portfolio hero that history would belong to the home page).
+function goSeason(toCyber) {
+  const u = new URL(location.href);
+  u.searchParams.delete('via');
+  if (toCyber) { u.searchParams.set('season', 'cyber'); u.searchParams.set('via', 'terminal'); }
+  else u.searchParams.delete('season');
+  const veil = document.getElementById('load-veil');
+  veil.style.transition = 'opacity .45s ease';
+  veil.style.backgroundColor = '#0B0820';
+  veil.style.opacity = '1';
+  termEl.classList.remove('open');
+  setTimeout(() => location.replace(u.toString()), 480);
+}
+// Dev/test hook, only under the existing ?capture=1 verification flag.
+if (CAPTURE) window.__ddwTest = {
+  openTerminal, closeTerminal,
+  terminalScreen: () => toScreen(terminalObj.grp.position.clone().add(new THREE.Vector3(0, 0.6, 0))),
+  boardTurns: () => termState && termState.turns.map(t => t & 3),
+  guideTo: (x, z) => { wanderTarget.set(x, 0, z); pauseUntil = 0; _guided = true; },
+  promptShown: () => ePromptEl.style.display === 'block' && objLabelEl.textContent,
+};
 
 // ── Sandbox Mode ──────────────────────────────────────────────────────────────
 let sandboxMode = false;
@@ -2885,6 +3500,9 @@ function animate() {
   _lastFrameTime = _now;
   dtScale = dt * 60;
   t += 0.044 * dtScale;
+  if (CYBER) updateCyber(dt, _now);
+  // Terminal antenna: a slow blink (steady under reduced motion).
+  if (terminalTip && !PREFERS_REDUCED_MOTION) terminalTip.visible = ((_now / 650) | 0) % 2 === 0;
 
   // Moved up from later in this function (was computed right before
   // updateWaterWake) — the deer's own water-contact/float logic below now
